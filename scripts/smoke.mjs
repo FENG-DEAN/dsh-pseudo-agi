@@ -356,6 +356,77 @@ try {
     assert.deepEqual([...MEMORY_LAYERS], ['working', 'episodic', 'semantic', 'procedural'])
     assert.deepEqual(tokenize('Deploy 部署'), ['deploy', '部', '署', '部署'])
   })
+
+  console.log('\n[9] 记忆取代（supersedes）')
+
+  const replaceStore = new MemoryStore(join(workspace, '.pseudo-agi', 'memory-supersede'))
+  let retiredId
+
+  await check('新记录取代旧记录：旧记录默认不再出现', async () => {
+    const older = await replaceStore.writeRecord({
+      layer: 'semantic',
+      title: '面板路由无凭据即返回 200',
+      body: '面板接口无凭据即返回 200，未决是否为契约。',
+      evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
+      confidence: 0.8,
+      tags: ['panel'],
+    })
+    retiredId = older.id
+    const newer = await replaceStore.writeRecord({
+      layer: 'semantic',
+      title: '面板路由校验签名 cookie',
+      body: '面板接口校验 dsh-auth 签名 cookie，无 cookie 返回 401。',
+      evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
+      confidence: 0.95,
+      tags: ['panel'],
+      supersedes: [older.id],
+    })
+    const visible = await replaceStore.scan()
+    assert.deepEqual(visible.records.map(record => record.id), [newer.id])
+  })
+
+  await check('旧记录仍在磁盘上，且带 supersededBy', async () => {
+    const all = await replaceStore.scan(MEMORY_LAYERS, { includeSuperseded: true })
+    const retired = all.records.find(record => record.id === retiredId)
+    assert.ok(retired !== undefined, 'superseded record must survive on disk')
+    assert.equal(typeof retired.supersededBy, 'string')
+  })
+
+  await check('被取代的记录不会被召回', async () => {
+    const result = await replaceStore.recall('无凭据 200', { limit: 5, minScore: 1, minCoverage: 0.2 })
+    assert.ok(result.hits.every(hit => hit.record.id !== retiredId))
+  })
+
+  await check('候选携带的 supersedes 能往返序列化', () => {
+    const text = serializeRecord({
+      id: 'cand-test',
+      layer: 'semantic',
+      title: 't',
+      body: 'b',
+      evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
+      confidence: 0.7,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      supersedes: ['mem-old'],
+    })
+    assert.match(text, /supersedes: \["mem-old"\]/)
+    const parsed = parseRecordFile(text, '/tmp/x.md')
+    assert.deepEqual(parsed.record.supersedes, ['mem-old'])
+  })
+
+  await check('supersedes 指向不存在的 id 时不报错', async () => {
+    const record = await replaceStore.writeRecord({
+      layer: 'semantic',
+      title: '替换一条已不存在的记录',
+      body: 'x',
+      evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
+      confidence: 0.7,
+      tags: [],
+      supersedes: ['mem-does-not-exist'],
+    })
+    assert.equal(record.supersedes.length, 1)
+  })
 } finally {
   await rm(workspace, { recursive: true, force: true })
 }

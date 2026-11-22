@@ -33,12 +33,12 @@
 
 ## 下一步（按优先级）
 
-2. **补充文档**：把"写盘必须显式 workspaceRoot"这条教训写进 `docs/spec-compliance.md` 缺陷清单；把 `sidebar.panellist` slot 约定补进文档（`kb_search` 扫 7 个文件未找到）；把"插件 prefix 路由不走 Host 鉴权"写进架构文档。
-3. **跨会话连续性**：下次冷启动只靠本文件 + procedural 记忆能否恢复状态——已部分验证两次。
-4. **评估 bundle 分发**：`pnpm pack` + `file:` 装一次，验证"npm 包 + cordis.patch.yml"这条分发路径（当前是 `link:` 五包）。
-5. **沙箱**（见待决 2）：`ctx.sandbox` 仍未接。
+1. **跨会话连续性**：下次冷启动只靠本文件 + procedural 记忆能否恢复状态——已部分验证三次。
+2. **评估 bundle 分发**：`pnpm pack` + `file:` 装一次，验证"npm 包 + cordis.patch.yml"这条分发路径（当前是 `link:` 五包）。
+3. **面板标注已取代的记忆**（小）：`packages/pseudo-agi-panel/index.js` 的 `parseRecord` 不读 `supersededBy`，历史记录会在面板里显示成普通记录，应标注或折叠。
+4. **记忆的自动裁决**（大，未做）：显式 `supersedes` 已实现；时间序裁决与置信度衰减仍未做——两条同等置信的记录并存时仍靠模型自己分辨。
 
-已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到；面板路由鉴权已实现（`pseudo-agi-panel` 验 Host Connection 的签名 cookie），且**用户确认浏览器面板在鉴权后仍能正常刷出数据**；`controlled_write` 已**真机双向验证**遵守 `sandboxPolicy`（`read-only` 拒绝、`danger-full-access` 放行）。
+已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到；面板路由鉴权已实现（`pseudo-agi-panel` 验 Host Connection 的签名 cookie），且**用户确认浏览器面板在鉴权后仍能正常刷出数据**；`controlled_write` 已**真机双向验证**遵守 `sandboxPolicy`（`read-only` 拒绝、`danger-full-access` 放行）；文档补全（`spec-compliance` §3/§4/§5/§6 + `architecture` §1/§3/§7，`kb_search("sidebar.panellist")` 从 0 命中变为 3 行）；记忆冲突消解（`memory_candidate` 支持 `supersedes`，提交时写 `supersededBy` 并默认过滤，smoke 35/35）。
 
 ## 阻塞 / 待决
 
@@ -170,3 +170,12 @@
 3. **吞异常的 catch 会把接线错误伪装成功能缺失**——现象是"没接上策略"，真相是"接错了还装没事"。诊断日志（`%TEMP%\pseudo-agi-tools-policy.log`，验证后已删代码）是唯一让我不再靠猜的手段。
 
 附带观察：`read-only` 下 `pwsh` 被降级为 ConstrainedLanguage、`Set-Content` 被拒写——证明 DSH 的进程沙箱对 shell 确实生效，这也反证了此前 `controlled_write` 是唯一的后门。
+
+### 2026-11-22 · 记忆冲突消解：显式取代（supersedes）
+
+- **设计原则**：「谁取代谁」是语义判断，归模型；装置只做执行与过滤。模型在 `memory_candidate` 里用 `supersedes: [id...]` 声明取代关系，提交时装置给旧记录写 `supersededBy`。
+- **为什么不做自动裁决**：按时间序或置信度自动挑一条，会在"两边都错"时错得更隐蔽；显式取代可回退——改一行 front-matter 就恢复。
+- **实现**：`store.ts` 的 `MemoryRecord` 增加 `supersededBy` / `supersedes`；`scan()` 增加 `includeSuperseded` 选项（默认 `false`，即召回/注入/摘要都看不见已取代的记录）；`writeRecord()` 写完新记录后调用私有 `markSuperseded()`；`commitCandidate()` 把候选里的 `supersedes` 带到提交阶段（**不能提前执行**：凭一条未提交的主张就退掉旧记忆是错的）；`tools.ts` 的 `memory_candidate` 新增 `supersedes` 参数。
+- **测试**：smoke 30 → **35/35**，新增 5 条——默认扫描隐藏旧记录、旧记录留存且带 `supersededBy`、被取代记录不再被召回、候选 `supersedes` 往返序列化、指向不存在 id 不报错。
+- **未做**：时间序/置信度自动裁决；面板尚未标注 superseded（已列下一步 3）。
+- 说明：本轮把两条互相矛盾的记忆合并成了 `mem-20261122-0d073194`、手工 `memory_forget` 掉 `mem-20261122-9d61328e`——那正是在本机制出现之前的手工做法，现在有机制替代了。

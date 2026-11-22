@@ -196,6 +196,11 @@ export function registerMemoryTools(ctx: Context, deps: MemoryToolDeps): void {
       },
       confidence: { type: 'number', description: '0..1; below the injection floor the record is stored but never injected.' },
       tags: { type: 'array', description: 'Retrieval tags.', items: { type: 'string' } },
+      supersedes: {
+        type: 'array',
+        description: 'Ids of existing records this one replaces. They stay on disk as history but stop being recalled or injected. Use this instead of memory_forget when the new record corrects an old one.',
+        items: { type: 'string' },
+      },
     },
     output: {
       schema: {
@@ -234,6 +239,9 @@ export function registerMemoryTools(ctx: Context, deps: MemoryToolDeps): void {
         evidence: args.evidence,
         confidence: args.confidence ?? 0.6,
         tags: args.tags ?? [],
+        ...args.supersedes !== undefined && args.supersedes.length > 0
+          ? { supersedes: args.supersedes }
+          : {},
       })
       return {
         candidateId: candidate.id,

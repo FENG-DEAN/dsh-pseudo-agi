@@ -37,6 +37,13 @@ export interface MemoryRecord {
   readonly tags: readonly string[]
   readonly createdAt: string
   readonly updatedAt: string
+  /**
+   * Id of the record that replaced this one. A superseded record stays on disk
+   * (history is worth keeping) but is skipped by recall, injection and digests.
+   */
+  readonly supersededBy?: string
+  /** Ids this record declares it replaces; carried from candidate through commit. */
+  readonly supersedes?: readonly string[]
   /** Absolute path of the Markdown file backing this record. */
   readonly path: string
 }
@@ -51,6 +58,13 @@ export interface WriteRecordInput {
   readonly tags: readonly string[]
   readonly id?: string
   readonly createdAt?: string
+  /**
+   * Records this write replaces. The store marks each one `supersededBy`, so a
+   * contradiction is settled by the model's own judgement rather than by an
+   * automatic pick. Unknown ids are ignored: replacing something already
+   * deleted is not an error.
+   */
+  readonly supersedes?: readonly string[]
 }
 
 /** One recall hit with its scoring detail. */
@@ -114,7 +128,7 @@ export function tokenize(text: string): string[] {
  * @returns the file contents, terminated by a newline.
  */
 export function serializeRecord(record: Omit<MemoryRecord, 'path'>): string {
-  return [
+  const lines = [
     FRONT_MATTER,
     `id: ${JSON.stringify(record.id)}`,
     `layer: ${JSON.stringify(record.layer)}`,
@@ -124,6 +138,13 @@ export function serializeRecord(record: Omit<MemoryRecord, 'path'>): string {
     `evidence: ${JSON.stringify(record.evidence)}`,
     `createdAt: ${JSON.stringify(record.createdAt)}`,
     `updatedAt: ${JSON.stringify(record.updatedAt)}`,
+  ]
+  if (record.supersededBy !== undefined) lines.push(`supersededBy: ${JSON.stringify(record.supersededBy)}`)
+  if (record.supersedes !== undefined && record.supersedes.length > 0) {
+    lines.push(`supersedes: ${JSON.stringify(record.supersedes)}`)
+  }
+  return [
+    ...lines,
     FRONT_MATTER,
     '',
     record.body.trimEnd(),
@@ -168,6 +189,8 @@ export function parseRecordFile(text: string, path: string): { record?: MemoryRe
   const evidence = fields.get('evidence')
   const createdAt = fields.get('createdAt')
   const updatedAt = fields.get('updatedAt')
+  const supersededBy = fields.get('supersededBy')
+  const supersedes = fields.get('supersedes')
 
   if (typeof id !== 'string' || id.length === 0) return { error: 'front-matter "id" must be a non-empty string' }
   if (typeof layer !== 'string' || !MEMORY_LAYERS.includes(layer as MemoryLayer)) {
@@ -193,6 +216,13 @@ export function parseRecordFile(text: string, path: string): { record?: MemoryRe
     }
     parsedEvidence.push({ kind: kind as Evidence['kind'], ref })
   }
+  if (supersededBy !== undefined && (typeof supersededBy !== 'string' || supersededBy.length === 0)) {
+    return { error: 'front-matter "supersededBy" must be a non-empty string when present' }
+  }
+  if (supersedes !== undefined
+    && (!Array.isArray(supersedes) || supersedes.some(entry => typeof entry !== 'string'))) {
+    return { error: 'front-matter "supersedes" must be an array of strings when present' }
+  }
 
   return {
     record: {
@@ -205,6 +235,8 @@ export function parseRecordFile(text: string, path: string): { record?: MemoryRe
       tags: tags as string[],
       createdAt: typeof createdAt === 'string' ? createdAt : new Date(0).toISOString(),
       updatedAt: typeof updatedAt === 'string' ? updatedAt : new Date(0).toISOString(),
+      ...typeof supersededBy === 'string' ? { supersededBy } : {},
+      ...Array.isArray(supersedes) ? { supersedes: supersedes as string[] } : {},
       path,
     },
   }
@@ -238,9 +270,13 @@ export class MemoryStore {
   /**
    * Read every record in the requested layers.
    * @param layers - layers to scan; defaults to every layer.
+   * @param options - `includeSuperseded` also returns records another record replaced.
    * @returns records and non-fatal parse errors.
    */
-  async scan(layers: readonly MemoryLayer[] = MEMORY_LAYERS): Promise<ScanResult> {
+  async scan(
+    layers: readonly MemoryLayer[] = MEMORY_LAYERS,
+    options: { readonly includeSuperseded?: boolean } = {},
+  ): Promise<ScanResult> {
     const records: MemoryRecord[] = []
     const errors: string[] = []
     for (const layer of layers) {
@@ -279,7 +315,12 @@ export class MemoryStore {
         records.push(parsed.record)
       }
     }
-    return { records, errors }
+    return {
+      records: options.includeSuperseded === true
+        ? records
+        : records.filter(record => record.supersededBy === undefined),
+      errors,
+    }
   }
 
   /** Scan the candidate directory with the same parser. */
@@ -321,6 +362,7 @@ export class MemoryStore {
     const now = new Date().toISOString()
     const id = input.id ?? `mem-${now.slice(0, 10).replaceAll('-', '')}-${randomUUID().slice(0, 8)}`
     const path = join(directory, `${id}${RECORD_SUFFIX}`)
+    const supersedes = input.supersedes?.filter(entry => entry !== id)
     const record: MemoryRecord = {
       id,
       layer: input.layer,
@@ -331,11 +373,33 @@ export class MemoryStore {
       tags: input.tags,
       createdAt: input.createdAt ?? now,
       updatedAt: now,
+      ...supersedes !== undefined && supersedes.length > 0 ? { supersedes } : {},
       path,
     }
     await this.atomicWrite(path, serializeRecord(record))
     this.cache.set(path, { mtimeMs: (await stat(path)).mtimeMs, record })
+    if (supersedes !== undefined && supersedes.length > 0) {
+      for (const replaced of supersedes) await this.markSuperseded(replaced, id)
+    }
     return record
+  }
+
+  /**
+   * Retire one existing record in place by pointing it at its replacement.
+   * The file stays on disk: history is worth keeping, and a wrong supersede is
+   * reversible by editing one line.
+   * @param id - record to retire.
+   * @param byId - the record that replaces it.
+   * @returns whether the record was found.
+   */
+  private async markSuperseded(id: string, byId: string): Promise<boolean> {
+    const { records } = await this.scan(MEMORY_LAYERS, { includeSuperseded: true })
+    const target = records.find(record => record.id === id)
+    if (target === undefined) return false
+    const updated: MemoryRecord = { ...target, supersededBy: byId, updatedAt: new Date().toISOString() }
+    await this.atomicWrite(target.path, serializeRecord(updated))
+    this.cache.delete(target.path)
+    return true
   }
 
   /**
@@ -352,6 +416,7 @@ export class MemoryStore {
     const now = new Date().toISOString()
     const id = input.id ?? `cand-${now.slice(0, 10).replaceAll('-', '')}-${randomUUID().slice(0, 8)}`
     const path = join(this.candidateDir, `${id}${RECORD_SUFFIX}`)
+    const supersedes = input.supersedes?.filter(entry => entry !== id)
     const record: MemoryRecord = {
       id,
       layer: input.layer,
@@ -362,6 +427,7 @@ export class MemoryStore {
       tags: input.tags,
       createdAt: input.createdAt ?? now,
       updatedAt: now,
+      ...supersedes !== undefined && supersedes.length > 0 ? { supersedes } : {},
       path,
     }
     await this.atomicWrite(path, serializeRecord(record))
@@ -393,6 +459,9 @@ export class MemoryStore {
       confidence: parsed.record.confidence,
       tags: parsed.record.tags,
       createdAt: parsed.record.createdAt,
+      // The replacement declared at staging time is applied now, not before:
+      // retiring a record on the strength of an uncommitted claim would be wrong.
+      ...parsed.record.supersedes !== undefined ? { supersedes: parsed.record.supersedes } : {},
     })
     await rm(path, { force: true })
     return record
