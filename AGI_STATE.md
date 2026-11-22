@@ -2,7 +2,7 @@
 
 > 由模型（意识）在开工/收工时维护：这是"我正在做什么"，不是事实记忆。
 > 事实记忆在 `.pseudo-agi/memory/`，用 `memory_recall` 取；工具轨迹在 `.pseudo-agi/governance/*.jsonl`。
-> 最近更新：2026-11-22（面板路由鉴权修复后，待重启验证）
+> 最近更新：2026-11-22（面板鉴权真机生效；浏览器 UI 待确认）
 
 ## 当前目标
 
@@ -33,7 +33,7 @@
 
 ## 下一步（按优先级）
 
-1. **重启验证面板鉴权真机生效**（未验证）：本轮已改 `pseudo-agi-panel` 让它自己验 `dsh-auth-*` cookie，单测 14/14 过，但插件跑在宿主进程里，要重启 desktop profile 才加载新代码。重启后应确认：无 cookie 的 `curl` → 401；浏览器里面板仍能刷出数据（同源 fetch 自动带 cookie）。
+1. **确认浏览器面板在新鉴权下仍可用**（待用户确认）：真机 401 已成立；`client.js` 的 fetch 默认 `same-origin` 会带 cookie，逻辑上不受影响，但 UI 未亲眼确认。若面板空白，`git revert c9be26b` 即回滚。
 2. **补充文档**：把"写盘必须显式 workspaceRoot"这条教训写进 `docs/spec-compliance.md` 缺陷清单；把 `sidebar.panellist` slot 约定补进文档（`kb_search` 扫 7 个文件未找到）；把"插件 prefix 路由不走 Host 鉴权"写进架构文档。
 3. **跨会话连续性**：下次冷启动只靠本文件 + procedural 记忆能否恢复状态——已部分验证两次。
 4. **评估 bundle 分发**：`pnpm pack` + `file:` 装一次，验证"npm 包 + cordis.patch.yml"这条分发路径（当前是 `link:` 五包）。
@@ -134,3 +134,10 @@
 - **二次修法**：改用 `ctx.inject(['credentials'], cb)` 在依赖作用域内读 secret；并把 `data.auth = { enforced, reason }` 放进响应，`reason` ∈ `credentials-service-absent` / `secret-unavailable` / `secret-read-failed` / `ready`，重启后可直接判定。
 - **单测**：panel-test 14/14、smoke 25/25 仍通过（无 credentials 的最小宿主仍放行，符合设计）。
 - **教训**：单测全绿不等于真机生效——测试里 credentials 是同 app 直供，真机是跨插件服务，可见性条件不同。
+
+### 2026-11-22 · 鉴权修复真机第二次生效
+
+- **真机物证**（GUI 端口 `59213`）：`GET /` → 401（`dsh web authentication required; reopen the URL printed by dsh web.`）；`GET /pseudo-agi/api/state` 无 cookie → **401**；带伪造 cookie → **401**。这是鉴权首次在真机成立——`denied` 只可能在 secret 已加载时发生，否则会走 `unverifiable` 放行。
+- **第一次失败的真正原因**（修正上一节的推断）：不是加载时序，而是**插件自身的 ctx 看不到由兄弟插件提供的服务**。本地实验"credentials 先/后于 panel"都返回 401，恰恰说明顺序无关；换成 `ctx.inject(['credentials'], cb)` 在依赖作用域里读之后才成功。
+- **浏览器端**：`packages/pseudo-agi-panel/client.js:104` 的 `fetch(url, { headers: { accept } })` 未设 `credentials`，默认 `same-origin` 会带 cookie，故面板逻辑上不受影响（**UI 仍待用户确认**）。
+- **参照插件对照**：`@local/dsh-preset-editor`（Junction → `D:\Doc\AIDoc\Dsh_dev\preset-editor`）同样用 `webServer.register({ kind: 'prefix' })` 且**不做任何鉴权**（`index.js:261-266`）；它的 `inject = ['agentPresets','webServer']` 只是必需依赖声明。结论：插件 prefix 路由无鉴权是生态常态，本 panel 的自验 cookie 比参考插件更严格。
