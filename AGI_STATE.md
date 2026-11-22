@@ -2,7 +2,7 @@
 
 > 由模型（意识）在开工/收工时维护：这是"我正在做什么"，不是事实记忆。
 > 事实记忆在 `.pseudo-agi/memory/`，用 `memory_recall` 取；工具轨迹在 `.pseudo-agi/governance/*.jsonl`。
-> 最近更新：2026-11-22（面板鉴权真机生效；浏览器 UI 待确认）
+> 最近更新：2026-11-22（controlled_write 真机双向验证通过）
 
 ## 当前目标
 
@@ -34,19 +34,18 @@
 ## 下一步（按优先级）
 
 1. **确认浏览器面板在新鉴权下仍可用**（待用户确认）：真机 401 已成立；`client.js` 的 fetch 默认 `same-origin` 会带 cookie，逻辑上不受影响，但 UI 未亲眼确认。若面板空白，`git revert c9be26b` 即回滚。
-2. **真机验证 `controlled_write` 的 read-only 拒绝**（未验证）：单测已覆盖，但当前会话策略是 `danger-full-access`，行为差异不可见。要验证需把会话策略切到 `read-only` 后试写；注意切换会影响该会话全部受限能力（含 `pwsh`），验证完须切回。
 2. **补充文档**：把"写盘必须显式 workspaceRoot"这条教训写进 `docs/spec-compliance.md` 缺陷清单；把 `sidebar.panellist` slot 约定补进文档（`kb_search` 扫 7 个文件未找到）；把"插件 prefix 路由不走 Host 鉴权"写进架构文档。
 3. **跨会话连续性**：下次冷启动只靠本文件 + procedural 记忆能否恢复状态——已部分验证两次。
 4. **评估 bundle 分发**：`pnpm pack` + `file:` 装一次，验证"npm 包 + cordis.patch.yml"这条分发路径（当前是 `link:` 五包）。
 5. **沙箱**（见待决 2）：`ctx.sandbox` 仍未接。
 
-已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到；面板路由鉴权已实现（`pseudo-agi-panel` 验 Host Connection 的签名 cookie）。
+已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到；面板路由鉴权已实现（`pseudo-agi-panel` 验 Host Connection 的签名 cookie）；`controlled_write` 已**真机双向验证**遵守 `sandboxPolicy`（`read-only` 拒绝、`danger-full-access` 放行）。
 
 ## 阻塞 / 待决
 
 - 无阻塞。
 - 待决 1：`bundle` 分发路径未验证（`workspace:^` 依赖在 profile 里解析不了，所以现在装的是四个独立包）。
-- 待决 2（**已修，待真机确认**）：沙箱机制本来就在——`dsh-sandbox` / `dsh-sandbox-policy` 由 `dsh-web-app` bundle 加载，会话策略当前是 `danger-full-access`（系统提示原话："The DSH file sandbox does not restrict file modifications"）。真正的缺口不是"没接沙箱"，而是 **`controlled_write` 绕过了统一策略**：DSH 的 `write`/`edit`（走 `ctx.fs`）与 `pwsh`（走 `ctx.shell`）都受策略约束，只有我们自己实现的写工具不受。修法见验证记录。
+- 待决 2（**已解决，真机双向验证通过**）：沙箱机制本来就在——`dsh-sandbox` / `dsh-sandbox-policy` 由 `dsh-web-app` bundle 加载，会话策略当前是 `danger-full-access`（系统提示原话："The DSH file sandbox does not restrict file modifications"）。真正的缺口不是"没接沙箱"，而是 **`controlled_write` 绕过了统一策略**：DSH 的 `write`/`edit`（走 `ctx.fs`）与 `pwsh`（走 `ctx.shell`）都受策略约束，只有我们自己实现的写工具不受。修法见验证记录。
 
 ## 运行环境
 
@@ -153,3 +152,22 @@
 - **修法**：`createWriteGuard` 增加第三个可选参数 `modeOf(exec)`；`apply()` 用 `ctx.inject(['sandboxPolicy'], cb)`（非 `ctx.get`，见 `mem-20261122-d09e910e`）拿到服务，在 guard 里 `policy.resolve({ session: exec.agent })` 取 `mode`，`read-only` 即拒绝写入。`workspace-write` 无需额外检查——guard 原本就把写入锁在 `config.workspaceRoot` 内，比策略根更严。
 - **单测**：`smoke.mjs` 25 → **30/30**，新增 5 条：read-only 拒绝、workspace-write/danger-full-access 放行、策略不削弱越界判定、无策略服务时保持原行为、策略只作用于本插件拥有的写工具。`panel-test` 14/14 未回归。
 - **未验证**：真机 `read-only` 拒绝——当前会话策略是 `danger-full-access`，差异不可见；验证需切策略，而切换会影响该会话全部受限能力（含 `pwsh`），故留作待办而非擅自执行。
+
+### 2026-11-22 · controlled_write 真机双向验证通过（三次失败才通）
+
+最终物证：
+
+| 会话策略 | 结果 | 日志 |
+| --- | --- | --- |
+| `danger-full-access` | 写入成功 | `modeOf: agent=present session=present mode=danger-full-access` |
+| `read-only` | **拒绝**：`当前会话文件策略为 read-only，controlled_write 拒绝写入。` | `modeOf: agent=present session=present mode=read-only` |
+
+且 `read-only-final.txt` **不存在**——拒绝发生在写入之前，不是写完再报错。
+
+三次失败的原因，逐条记下：
+
+1. **旧模块**：进程 16:32:51 启动早于 `lib` 编译 16:41:05，跑的是改之前的代码。教训：改完必须重启，我上一轮只顾着切策略。
+2. **Agent ≠ Session**：`exec.agent` 的类型是 `Agent`（`dsh-tools/src/contracts.ts` 的 `ToolExecutionInput`），不是 `Session`；`resolve({ session: exec.agent })` 内部读 `session.header.cwd` 抛 TypeError，被 `catch` 吞掉后返回 `undefined` → 放行。应从 `agent.session` 取（`Agent` 上确有 `readonly session: Session`）。
+3. **吞异常的 catch 会把接线错误伪装成功能缺失**——现象是"没接上策略"，真相是"接错了还装没事"。诊断日志（`%TEMP%\pseudo-agi-tools-policy.log`，验证后已删代码）是唯一让我不再靠猜的手段。
+
+附带观察：`read-only` 下 `pwsh` 被降级为 ConstrainedLanguage、`Set-Content` 被拒写——证明 DSH 的进程沙箱对 shell 确实生效，这也反证了此前 `controlled_write` 是唯一的后门。

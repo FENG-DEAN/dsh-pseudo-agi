@@ -66,11 +66,18 @@ export function apply(ctx: Context, config: ToolsConfig): void {
     policy = (scoped as { sandboxPolicy?: SandboxPolicyLike }).sandboxPolicy
   })
 
-  /** Effective file policy for one call; absent when no policy service is mounted. */
+  /**
+   * Effective file policy for one call; absent when no policy service is mounted.
+   *
+   * `exec.agent` is an `Agent`, not a `Session`: the policy resolves against the
+   * session that agent drives, and passing the agent itself makes the resolver
+   * throw while reading `session.header.cwd`.
+   */
   const modeOf: SandboxModeOf = (exec) => {
     if (policy === undefined) return undefined
+    const session = (exec.agent as { session?: unknown } | undefined)?.session
     try {
-      return policy.resolve({ session: exec.agent }).mode
+      return policy.resolve({ session }).mode
     } catch {
       // A host that cannot resolve a policy must not turn every write into a
       // denial; the containment fence below still applies.
