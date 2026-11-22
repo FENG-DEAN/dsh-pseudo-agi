@@ -35,7 +35,7 @@ pnpm add github:FENG-DEAN/dsh-pseudo-agi
 pnpm add @pseudo-agi/bundle
 
 # Release / 静态 URL 上的 tarball
-pnpm add https://github.com/FENG-DEAN/dsh-pseudo-agi/releases/download/v0.3.1/pseudo-agi-bundle-0.3.1.tgz
+pnpm add https://github.com/FENG-DEAN/dsh-pseudo-agi/releases/download/v0.4.0/pseudo-agi-bundle-0.4.0.tgz
 ```
 
 DSH 插件页的安装输入框接受同样的 spec（包名、绝对路径、tarball URL、Git 地址）。

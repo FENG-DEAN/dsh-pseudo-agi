@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Panel route test: drive the Host half's real `/state` handler with a fake
  * web server.
  *
@@ -16,7 +16,7 @@
 
 import assert from 'node:assert/strict'
 import { createHash, createHmac, randomBytes } from 'node:crypto'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -96,7 +96,7 @@ let fork3 = null
 let fork4 = null
 
 /** Call the handler and resolve with the response it produces. */
-async function invoke(handler, method, url, headers = {}) {
+async function invoke(handler, method, url, headers = {}, body = undefined) {
   const response = {
     status: 0,
     headers: {},
@@ -111,7 +111,14 @@ async function invoke(handler, method, url, headers = {}) {
     },
   }
   const done = new Promise(resolve => { response.done = resolve })
-  await handler({ method, url, headers }, response)
+  const request = { method, url, headers }
+  if (body !== undefined) {
+    // node:http reads the body as an async iterable; the route uses the same path.
+    request[Symbol.asyncIterator] = async function* () {
+      yield Buffer.from(body, 'utf8')
+    }
+  }
+  await handler(request, response)
   await done
   return response
 }
@@ -262,6 +269,93 @@ try {
     })
     assert.equal(response.status, 401)
   })
+
+  console.log('\n[4b] 知识库迁移接口（唯一的写路径）')
+
+  await check('POST /store 无 cookie → 401', async () => {
+    const response = await invoke(authedHandler, 'POST', '/pseudo-agi/api/store', { host: authority },
+      JSON.stringify({ action: 'rollback' }))
+    assert.equal(response.status, 401)
+  })
+
+  await check('非法 action → 400', async () => {
+    const response = await invoke(authedHandler, 'POST', '/pseudo-agi/api/store', {
+      host: authority,
+      cookie: mintCookie(secretBytes, authority),
+    }, JSON.stringify({ action: 'delete-everything' }))
+    assert.equal(response.status, 400)
+    assert.equal(JSON.parse(response.body).ok, false)
+  })
+
+  await check('GET /store → 405（只接受 POST）', async () => {
+    const response = await invoke(authedHandler, 'GET', '/pseudo-agi/api/store', {
+      host: authority,
+      cookie: mintCookie(secretBytes, authority),
+    })
+    assert.equal(response.status, 405)
+  })
+
+  const relocateRoot = await mkdtemp(join(tmpdir(), 'pseudo-agi-relocate-'))
+  const relocateTo = join(relocateRoot, 'kb')
+
+  await check('POST /store relocate → 200，复制校验并写指针', async () => {
+    const response = await invoke(authedHandler, 'POST', '/pseudo-agi/api/store', {
+      host: authority,
+      cookie: mintCookie(secretBytes, authority),
+    }, JSON.stringify({ action: 'relocate', to: relocateTo }))
+    assert.equal(response.status, 200)
+    const data = JSON.parse(response.body).data
+    assert.equal(data.action, 'relocate')
+    assert.equal(data.verified, true)
+    assert.equal(data.restartRequired, true)
+    assert.ok(data.copiedFiles >= 1, `expected copied files, got ${data.copiedFiles}`)
+    await stat(join(relocateTo, 'memory', 'semantic', 'mem-20260101-aaaaaaaa.md'))
+    const pointer = JSON.parse(await readFile(join(fixture, '.pseudo-agi', 'store.json'), 'utf8'))
+    assert.equal(pointer.root, relocateTo)
+  })
+
+  await check('POST /store rollback → 200，指针移除、数据不动', async () => {
+    const response = await invoke(authedHandler, 'POST', '/pseudo-agi/api/store', {
+      host: authority,
+      cookie: mintCookie(secretBytes, authority),
+    }, JSON.stringify({ action: 'rollback' }))
+    assert.equal(response.status, 200)
+    const data = JSON.parse(response.body).data
+    assert.equal(data.changed, true)
+    await assert.rejects(stat(join(fixture, '.pseudo-agi', 'store.json')))
+    // 回滚只改指针：拷贝出去的副本仍在，原树也没被删。
+    await stat(join(relocateTo, 'memory', 'semantic', 'mem-20260101-aaaaaaaa.md'))
+    await stat(join(fixture, '.pseudo-agi', 'memory', 'semantic', 'mem-20260101-aaaaaaaa.md'))
+  })
+
+  await check('read-only 会话策略 → 403，且不创建目标目录', async () => {
+    let roHandler = null
+    const roWebServer = {
+      register(options) {
+        roHandler = options.handler
+        return () => { roHandler = null }
+      },
+    }
+    const app5 = new Context()
+    app5.plugin({ name: 'fake-web-5', apply(ctx) { ctx.provide('webServer', roWebServer) } })
+    app5.plugin({
+      name: 'fake-policy',
+      apply(ctx) { ctx.provide('sandboxPolicy', { resolve: () => ({ mode: 'read-only' }) }) },
+    })
+    const fork5 = app5.plugin(panel, { workspaceRoot: fixture })
+    const refusedTo = join(relocateRoot, 'refused')
+    try {
+      await waitFor('read-only route', () => roHandler !== null)
+      const response = await invoke(roHandler, 'POST', '/pseudo-agi/api/store', {},
+        JSON.stringify({ action: 'relocate', to: refusedTo }))
+      assert.equal(response.status, 403)
+      await assert.rejects(stat(refusedTo))
+    } finally {
+      await fork5.dispose().catch(() => {})
+    }
+  })
+
+  await rm(relocateRoot, { recursive: true, force: true })
 
   console.log('\n[5] 知识库换位置后，面板跟随指针')
 

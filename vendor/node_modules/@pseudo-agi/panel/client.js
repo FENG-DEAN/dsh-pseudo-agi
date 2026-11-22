@@ -44,6 +44,17 @@ window.__ModuleLoader__.load({
         storePointer: 'pointer file',
         storeConfig: 'configured default',
         storeWarning: 'pointer ignored',
+        relocate: 'Move…',
+        rollback: 'Back to default',
+        relocateTitle: 'Move the knowledge base',
+        relocateHint: 'Absolute path for the new root. Files are copied and verified first; the pointer is written last, and the old tree is kept.',
+        relocatePlaceholder: 'D:/AGI-KB/pseudo-agi',
+        moveConfirm: 'Move',
+        cancel: 'Cancel',
+        relocated: 'Moved to',
+        rollbackDone: 'Pointer reset',
+        restartHint: 'restart the host so all four layers pick it up',
+        storeBusy: 'Working…',
       },
       zh: {
         panel: '鲸鱼娘 AGI',
@@ -69,6 +80,17 @@ window.__ModuleLoader__.load({
         storePointer: '来自指针文件',
         storeConfig: '来自配置默认值',
         storeWarning: '指针被忽略',
+        relocate: '迁移…',
+        rollback: '回到默认',
+        relocateTitle: '迁移知识库',
+        relocateHint: '填写新的根目录（绝对路径）。会先复制并逐字节校验，最后才写指针；旧目录保留。',
+        relocatePlaceholder: 'D:/AGI-KB/pseudo-agi',
+        moveConfirm: '迁移',
+        cancel: '取消',
+        relocated: '已迁移到',
+        rollbackDone: '指针已重置',
+        restartHint: '重启宿主后四层才全面生效',
+        storeBusy: '处理中…',
       },
     }
 
@@ -123,6 +145,16 @@ window.__ModuleLoader__.load({
 .pa-storePath { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; word-break: break-all; }
 .pa-storeSource { color: var(--dsw-alias-label-secondary); flex: none; }
 .pa-storeWarn { color: var(--dsw-alias-state-error-primary); flex: none; }
+.pa-storeActions { display: flex; gap: 10px; margin-left: auto; }
+.pa-linkBtn { border: none; background: transparent; color: var(--dsw-alias-brand-primary); font: inherit; font-size: 11.5px; cursor: pointer; padding: 0; }
+.pa-linkBtn:disabled { opacity: .5; cursor: default; }
+.pa-notice { font-size: 11.5px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); }
+.pa-notice[data-kind='error'] { color: var(--dsw-alias-state-error-primary); border-color: var(--dsw-alias-state-error-primary); }
+.pa-modal { position: fixed; inset: 0; background: rgba(0, 0, 0, .38); display: flex; align-items: center; justify-content: center; z-index: 40; }
+.pa-modalBox { width: min(520px, 90vw); box-sizing: border-box; background: var(--dsw-alias-bg-layer-1, #fff); border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.pa-modalTitle { margin: 0; font-size: 14px; font-weight: 600; }
+.pa-input { width: 100%; box-sizing: border-box; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l1); background: transparent; color: inherit; font: inherit; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.pa-modalActions { display: flex; gap: 8px; justify-content: flex-end; }
 .pa-empty { color: var(--dsw-alias-label-secondary); font-size: 12px; padding: 6px 0; }
 .pa-pre { margin: 0; padding: 0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; color: var(--dsw-alias-label-primary); max-height: 320px; overflow: auto; }
 .pa-error { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--dsw-alias-state-error-primary); color: var(--dsw-alias-state-error-primary); font-size: 12px; }
@@ -199,6 +231,13 @@ window.__ModuleLoader__.load({
       const [state, setState] = useState(null)
       const [error, setError] = useState(null)
       const [busy, setBusy] = useState(false)
+      // The one write the panel offers. Kept apart from `busy` so a migration
+      // cannot block a refresh, and apart from `error` so a failed refresh does
+      // not hide the migration result.
+      const [storeBusy, setStoreBusy] = useState(false)
+      const [storeNotice, setStoreNotice] = useState(null)
+      const [relocateOpen, setRelocateOpen] = useState(false)
+      const [relocatePath, setRelocatePath] = useState('')
 
       const load = useCallback(async () => {
         setBusy(true)
@@ -213,6 +252,62 @@ window.__ModuleLoader__.load({
       }, [])
 
       useEffect(() => { void load() }, [load])
+
+      /**
+       * POST one store action and report the outcome in the panel.
+       *
+       * The route is the same authenticated origin as the read path; the panel
+       * sends nothing but the action name and the destination the user typed.
+       * @param {object} body request payload.
+       * @returns {Promise<object|null>} the migration report, or null on failure.
+       */
+      const submitStore = useCallback(async (body) => {
+        setStoreBusy(true)
+        setStoreNotice(null)
+        try {
+          const response = await fetch(`${API}/store`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify(body),
+          })
+          const raw = await response.text()
+          let parsed = {}
+          try { parsed = raw === '' ? {} : JSON.parse(raw) } catch { parsed = {} }
+          if (!response.ok || parsed.ok !== true) throw new Error(parsed.error ?? `HTTP ${response.status}`)
+          return parsed.data ?? {}
+        } catch (failure) {
+          setStoreNotice({ kind: 'error', text: failure instanceof Error ? failure.message : String(failure) })
+          return null
+        } finally {
+          setStoreBusy(false)
+        }
+      }, [])
+
+      const relocate = useCallback(async () => {
+        const to = relocatePath.trim()
+        if (to === '') return
+        const data = await submitStore({ action: 'relocate', to })
+        if (data === null) return
+        setRelocateOpen(false)
+        setRelocatePath('')
+        setStoreNotice({
+          kind: 'ok',
+          text: `${t('relocated')} ${String(data.to ?? '')} · ${String(data.copiedFiles ?? '?')} 个文件 / ${String(data.copiedBytes ?? '?')} bytes（${t('restartHint')}）`,
+        })
+        void load()
+      }, [relocatePath, submitStore, t, load])
+
+      const rollback = useCallback(async () => {
+        const data = await submitStore({ action: 'rollback' })
+        if (data === null) return
+        setStoreNotice({
+          kind: 'ok',
+          text: data.changed === true
+            ? `${t('rollbackDone')}: ${String(data.to ?? '')}（${t('restartHint')}）`
+            : String(data.reason ?? t('rollbackDone')),
+        })
+        void load()
+      }, [submitStore, t, load])
 
       const layers = state?.layers ?? {}
       const memories = state?.memories ?? []
@@ -274,12 +369,56 @@ window.__ModuleLoader__.load({
             h('span', { className: 'pa-storeSource' }, store.source === 'pointer' ? t('storePointer') : t('storeConfig')),
             store.warning === null || store.warning === undefined
               ? null
-              : h('span', { className: 'pa-storeWarn' }, `${t('storeWarning')}: ${store.warning}`)),
+              : h('span', { className: 'pa-storeWarn' }, `${t('storeWarning')}: ${store.warning}`),
+            h('span', { className: 'pa-storeActions' },
+              h('button', {
+                type: 'button',
+                className: 'pa-linkBtn',
+                disabled: storeBusy,
+                onClick: () => { setRelocatePath(''); setRelocateOpen(true) },
+              }, t('relocate')),
+              store.source === 'pointer'
+                ? h('button', {
+                  type: 'button',
+                  className: 'pa-linkBtn',
+                  disabled: storeBusy,
+                  onClick: () => { void rollback() },
+                }, t('rollback'))
+                : null)),
+          storeNotice === null
+            ? null
+            : h('div', { className: 'pa-notice', 'data-kind': storeNotice.kind, role: 'status' }, storeNotice.text),
           card(t('layers'), state === null ? null : `${t('generated')} ${String(state.generatedAt).slice(0, 19).replace('T', ' ')}`, h('div', {}, layerRows)),
           card(t('memories'), t('memoriesHint'), h('div', {}, memoryRows)),
           card(t('events'), t('eventsHint'), h('div', {}, eventRows)),
           card(t('bench'), t('benchHint'),
-            h('pre', { className: 'pa-pre' }, state?.agiState ?? t('emptyBench')))))
+            h('pre', { className: 'pa-pre' }, state?.agiState ?? t('emptyBench'))),
+          relocateOpen
+            ? h('div', { className: 'pa-modal', role: 'dialog', 'aria-modal': true },
+              h('div', { className: 'pa-modalBox' },
+                h('h2', { className: 'pa-modalTitle' }, t('relocateTitle')),
+                h('p', { className: 'pa-cardHint' }, t('relocateHint')),
+                h('input', {
+                  className: 'pa-input',
+                  value: relocatePath,
+                  placeholder: t('relocatePlaceholder'),
+                  'aria-label': t('relocateTitle'),
+                  onChange: event => setRelocatePath(event.target.value),
+                }),
+                h('div', { className: 'pa-modalActions' },
+                  h('button', {
+                    type: 'button',
+                    className: 'pa-btn',
+                    disabled: storeBusy,
+                    onClick: () => { setRelocateOpen(false) },
+                  }, t('cancel')),
+                  h('button', {
+                    type: 'button',
+                    className: 'pa-btn',
+                    disabled: storeBusy || relocatePath.trim() === '',
+                    onClick: () => { void relocate() },
+                  }, storeBusy ? t('storeBusy') : t('moveConfirm')))))
+            : null))
     }
 
     return {

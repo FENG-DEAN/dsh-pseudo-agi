@@ -1,6 +1,6 @@
 {
   "name": "@pseudo-agi/memory",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Layered, Markdown-first memory for the DeepSeek Harness: working / episodic / semantic / procedural",
   "type": "module",
   "main": "lib/index.js",
@@ -49,7 +49,7 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.19.0",
-    "@pseudo-agi/store": "workspace:^0.3.1"
+    "@pseudo-agi/store": "workspace:^0.4.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.1.0",

@@ -8,7 +8,7 @@
 | 手脚 | `pseudo-agi-tools` | 只读取证、受控写入、guard 边界 | 不记忆、不决定做什么 |
 | 意识脚手架 | `pseudo-agi-scaffold` | 每轮首步注入一条纪律、发 `scaffold-step` 事件 | **不路由、不选工具、不改 loop 决策、不读用户文本做分类** |
 | 治理 | `pseudo-agi-governance` | 只读观察、指标、JSONL、report 工具 | 不改变任何决策 |
-| 面板 | `pseudo-agi-panel` | 左侧栏入口 + 只读视图（知识库位置/分层/记忆/事件/工作台）、一条同源 JSON 路由 | **不写文件、不调工具、不碰 loop** |
+| 面板 | `pseudo-agi-panel` | 左侧栏入口 + 视图（知识库位置/分层/记忆/事件/工作台）；`GET /state` 只读，`POST /store` 是唯一的写路径（迁移或回滚知识库，复用 `@pseudo-agi/store` 原语，受 `dsh-auth` cookie 与 read-only 策略约束） | **除显式迁移外不写文件、不调工具、不碰 loop** |
 
 另有一个**不是插件**的横切库 `@pseudo-agi/store`：解析知识库活动根、统计、迁移与回滚。memory / tools / governance / panel 都是它的消费者，它本身不注册任何 `ctx.*`（详见 §4.1）。
 

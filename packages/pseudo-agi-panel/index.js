@@ -1,10 +1,16 @@
 /**
  * Host half of the Whale-girl AGI panel.
  *
- * It owns exactly one same-origin JSON route and nothing else: the panel is a
- * read-only viewer over files the other layers already write, so it can be
- * unloaded at any time without the AGI losing a capability. No state is kept
- * between requests; every read reflects the filesystem right now.
+ * It owns one same-origin JSON prefix route: `GET /state` reads the files the
+ * other layers already write, and `POST /store` performs the single explicit
+ * write the panel offers — moving the knowledge base, or rolling that move back.
+ * The read path never writes. The write path is cookie-authenticated (same
+ * credential as the read path), method-bound to POST, refuses `read-only`
+ * session policy, and delegates to the same `@pseudo-agi/store` primitives that
+ * `kb_store` calls, so the panel and the tool can never disagree about what a
+ * migration did.
+ *
+ * No state is kept between requests; every read reflects the filesystem now.
  *
  * @module @pseudo-agi/panel
  */
@@ -12,7 +18,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { resolveStore, resolveWorkspaceRoot } from '@pseudo-agi/store'
+import { relocateStore, resolveStore, resolveWorkspaceRoot, rollbackStore } from '@pseudo-agi/store'
 
 /** Plugin name. */
 export const name = 'pseudo-agi-panel'
@@ -34,6 +40,42 @@ const MAX_TEXT = 4000
 const MAX_EVENTS = 20
 const MAX_MEMORIES = 40
 
+/** Largest JSON body one panel request may carry; migration payloads are tiny. */
+const MAX_BODY_BYTES = 8 * 1024
+
+/** The only store actions the panel accepts: the two relocation primitives. */
+const STORE_ACTIONS = new Set(['relocate', 'rollback'])
+
+/** A failure that already carries the HTTP status it should answer with. */
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message)
+    this.name = 'HttpError'
+    this.status = status
+  }
+}
+
+/**
+ * Read and parse one small JSON request body.
+ * @param {import('node:http').IncomingMessage} req incoming request.
+ * @returns {Promise<object>} the parsed object; `{}` for an empty body.
+ */
+async function readJsonBody(req) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of req) {
+    size += chunk.length
+    if (size > MAX_BODY_BYTES) throw new RangeError(`request body exceeds ${MAX_BODY_BYTES} bytes`)
+    chunks.push(chunk)
+  }
+  if (chunks.length === 0) return {}
+  const value = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('request body must be a JSON object')
+  }
+  return value
+}
+
 /**
  * The Host Connection's browser-session credential. Its secret signs the
  * `dsh-auth-<hash>` cookie that `dsh web` mints after the launch-token
@@ -49,6 +91,92 @@ const AUTH_RECORD_KEY = 'client-connection/browser-session'
 const AUTH_COOKIE_PREFIX = 'dsh-auth-'
 const AUTH_SECRET_BYTES = 32
 const AUTH_COOKIE_BASE64URL = /^[A-Za-z0-9_-]*$/
+
+/**
+ * Resolve the session's file policy, tolerating a minimal host.
+ * @param {object} ctx plugin context.
+ * @returns {string} the sandbox mode, or `'unknown'` when no policy service exists.
+ */
+function sessionMode(ctx) {
+  try {
+    const policy = ctx.get('sandboxPolicy', false)
+    if (policy === undefined || typeof policy.resolve !== 'function') return 'unknown'
+    return policy.resolve().mode
+  } catch {
+    return 'unknown'
+  }
+}
+
+/**
+ * Perform one knowledge-base migration request.
+ *
+ * The write is deliberately narrow: two named actions, no arbitrary path
+ * writes, and every filesystem decision belongs to `@pseudo-agi/store` — the
+ * panel only authenticates, validates, and reports. A `read-only` session
+ * policy refuses before any file is touched, because the panel writes through
+ * Node rather than through the sandboxed tools that would otherwise enforce it.
+ *
+ * @param {object} ctx plugin context.
+ * @param {object} config plugin config, re-resolved here on purpose: the write
+ *   path must act on the pointer as it is on disk now, not on the snapshot
+ *   captured when the plugin was applied. Otherwise a second migration or a
+ *   rollback would decide from a stale `location.pointer` (observed: rollback
+ *   after relocate answered "no pointer file").
+ * @param {import('node:http').IncomingMessage} req POST request.
+ * @returns {Promise<object>} the migration report.
+ * @throws {HttpError} 400 malformed body/action, 403 read-only policy, 409 store refusal.
+ */
+async function performStore(ctx, config, req) {
+  if (sessionMode(ctx) === 'read-only') {
+    throw new HttpError(403, 'read-only session policy refuses knowledge-base migration')
+  }
+  const location = resolveStore({
+    workspaceRoot: resolveWorkspaceRoot(config.workspaceRoot),
+    storeRoot: config.storeRoot ?? DEFAULT_STORE_ROOT,
+  })
+  let body
+  try {
+    body = await readJsonBody(req)
+  } catch (error) {
+    throw new HttpError(400, error instanceof Error ? error.message : String(error))
+  }
+  const action = body.action
+  if (!STORE_ACTIONS.has(action)) {
+    throw new HttpError(400, `unknown store action "${String(action)}"`)
+  }
+  try {
+    if (action === 'relocate') {
+      const result = await relocateStore(location, {
+        to: body.to,
+        move: body.move === true,
+        overwrite: body.overwrite === true,
+      })
+      return {
+        action,
+        from: result.from,
+        to: result.to,
+        copiedFiles: result.copied.files,
+        copiedBytes: result.copied.bytes,
+        verified: result.verified,
+        moved: result.moved,
+        restartRequired: true,
+      }
+    }
+    const result = await rollbackStore(location, { to: body.to })
+    return {
+      action,
+      changed: result.changed,
+      removed: result.removed,
+      from: result.from,
+      to: result.base,
+      reason: result.reason ?? null,
+      restartRequired: result.changed === true,
+    }
+  } catch (error) {
+    if (error instanceof HttpError) throw error
+    throw new HttpError(409, error instanceof Error ? error.message : String(error))
+  }
+}
 
 /**
  * Assert the config the panel depends on.
@@ -407,12 +535,24 @@ export function apply(ctx, config) {
         warnedUnverifiable = true
         ctx.logger.warn('pseudo-agi-panel: this host mints no browser-session cookie; serving state without authentication')
       }
-      if (req.method !== 'GET') {
+      if (req.method !== 'GET' && req.method !== 'POST') {
         send(405, { ok: false, error: 'method not allowed' })
         return
       }
       const url = new URL(req.url ?? '/', 'http://127.0.0.1')
       const action = url.pathname.slice(ROUTE_PREFIX.length).replace(/^\//, '')
+      if (action === 'store') {
+        if (req.method !== 'POST') {
+          send(405, { ok: false, error: 'method not allowed' })
+          return
+        }
+        send(200, { ok: true, data: await performStore(ctx, config, req) })
+        return
+      }
+      if (req.method !== 'GET') {
+        send(405, { ok: false, error: 'method not allowed' })
+        return
+      }
       if (action !== 'state') {
         send(404, { ok: false, error: `unknown action "${action}"` })
         return
@@ -422,6 +562,10 @@ export function apply(ctx, config) {
       data.auth = { enforced: verdict !== 'unverifiable', reason: authState }
       send(200, { ok: true, data })
     } catch (error) {
+      if (error instanceof HttpError) {
+        send(error.status, { ok: false, error: error.message })
+        return
+      }
       ctx.logger.warn(`pseudo-agi-panel: ${error instanceof Error ? error.message : String(error)}`)
       send(500, { ok: false, error: 'internal error' })
     }

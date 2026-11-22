@@ -30,7 +30,7 @@
 | --- | --- |
 | GitHub | `pnpm add github:FENG-DEAN/dsh-pseudo-agi` |
 | npm（发布后） | `pnpm add @pseudo-agi/bundle` |
-| tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.3.1.tgz` |
+| tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.4.0.tgz` |
 
 DSH 插件页的安装输入框接受同样的 spec（包名 / 绝对路径 / tarball URL / Git 地址）。仓库里已带构建产物（`vendor/` 与 `client.js`），**不会在你机器上重新构建**。
 
@@ -68,7 +68,7 @@ DSH 插件页的安装输入框接受同样的 spec（包名 / 绝对路径 / ta
 | [packages/pseudo-agi-tools](packages/pseudo-agi-tools) | 受控手脚：`kb_search`、`kb_read`、`controlled_write`、`kb_store` + `ctx.tools.guard()` |
 | [packages/pseudo-agi-scaffold](packages/pseudo-agi-scaffold) | 意识脚手架：每轮首步注入纪律 + 发 `scaffold-step` 事件；**不做路由、不选工具** |
 | [packages/pseudo-agi-governance](packages/pseudo-agi-governance) | 治理层：只读观察器 + 指标 + JSONL 审计 + `governance_report` |
-| [packages/pseudo-agi-panel](packages/pseudo-agi-panel) | 左侧栏只读面板：Host 一条同源路由 + 客户端两个 slot；自验 `dsh-auth` 签名 cookie；显示知识库位置 |
+| [packages/pseudo-agi-panel](packages/pseudo-agi-panel) | 左侧栏面板：`GET /state` 只读快照 + `POST /store` 迁移/回滚（同源 cookie 鉴权、read-only 策略拒绝、与 `kb_store` 共用同一套原语）；显示知识库位置并可在此发起迁移 |
 | [packages/pseudo-agi-store](packages/pseudo-agi-store) | 知识库位置：指针解析 + 迁移/回滚原语（纯库，无构建步骤，不是插件） |
 | [docs/bundle.md](docs/bundle.md) | 分发单元说明：仓库根即 bundle、`vendor/` 的来由、安装 / 配置 / 使用 |
 | [docs/architecture.md](docs/architecture.md) | 事件流、注册/释放清单、磁盘布局与知识库活动根、与 DSH 契约的对应关系 |
