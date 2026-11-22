@@ -11,7 +11,11 @@
     "load-test": "node scripts/load-test.mjs",
     "panel-test": "node scripts/panel-test.mjs",
     "store-test": "node scripts/store-test.mjs",
-    "verify": "pnpm -r run build && pnpm smoke && pnpm store-test && pnpm load-test && pnpm panel-test"
+    "bundle-test": "node scripts/bundle-test.mjs",
+    "release-check": "node scripts/release-check.mjs",
+    "pack-bundle": "node scripts/pack-bundle.mjs",
+    "clean:build": "node scripts/clean.mjs",
+    "verify": "pnpm -r run build && pnpm smoke && pnpm store-test && pnpm load-test && pnpm panel-test && pnpm bundle-test && pnpm release-check"
   },
   "engines": {
     "node": ">=20.11"

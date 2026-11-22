@@ -1,4 +1,4 @@
-# Layer order matters:
+﻿# Layer order matters:
 #   memory     → storage, recall tools, per-step injection block
 #   tools      → controlled hands (guard + approval + policy check, + kb_store)
 #   scaffold   → injects one discipline line per turn; never routes, never picks tools
@@ -25,9 +25,18 @@
 # five configs by hand. See docs/install.md §6.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── 为什么 name 是包内子路径 ──────────────────────────────────────────────────
+# 形状是 `@pseudo-agi/bundle/layers/<layer>`，不是 `@pseudo-agi/<layer>`：插件 patch
+# 里的 name 是一个模块说明符，loader 用 `import.meta.resolve` 从**profile 的 package
+# scope** 解析它。自包含安装时 profile 只有 `@pseudo-agi/bundle` 一个目录，六个层包
+# 在它自己的 node_modules 里；子路径从 profile 解析得到 bundle，转发文件再从 bundle
+# 目录解析到内置副本。link 安装（开发）同样可用，因为那时兄弟包在 workspace 里。
+# 详见 packages/pseudo-agi-bundle/layers/README.md。
+# ─────────────────────────────────────────────────────────────────────────────
+
 - insert:
     - id: pseudo-agi-memory
-      name: '@pseudo-agi/memory'
+      name: '@pseudo-agi/bundle/layers/memory'
       config:
         workspaceRoot: .
         storeRoot: .pseudo-agi
@@ -39,7 +48,7 @@
         writeWorkingDigest: true
 
     - id: pseudo-agi-tools
-      name: '@pseudo-agi/tools'
+      name: '@pseudo-agi/bundle/layers/tools'
       config:
         workspaceRoot: .
         storeRoot: .pseudo-agi
@@ -56,14 +65,14 @@
     # Formerly `@pseudo-agi/controller`. The keyword router is gone: "what to do
     # next" is the model's call, so this layer only injects discipline.
     - id: pseudo-agi-scaffold
-      name: '@pseudo-agi/scaffold'
+      name: '@pseudo-agi/bundle/layers/scaffold'
       config:
         enabled: true
         injectPerTurn: 1
         requireEvidence: true
 
     - id: pseudo-agi-governance
-      name: '@pseudo-agi/governance'
+      name: '@pseudo-agi/bundle/layers/governance'
       config:
         workspaceRoot: .
         storeRoot: .pseudo-agi
@@ -73,7 +82,7 @@
         maxRecentLines: 40
 
     - id: pseudo-agi-panel
-      name: '@pseudo-agi/panel'
+      name: '@pseudo-agi/bundle/layers/panel'
       config:
         workspaceRoot: .
         storeRoot: .pseudo-agi

@@ -9,15 +9,22 @@
 
 ```bash
 pnpm install
+pnpm clean:build       # tsc 不删陈旧产物：删掉的源文件会留下 .js 并被发布出去
 pnpm -r run build      # 顺序由依赖图决定：memory/tools → scaffold → governance
 pnpm -r run typecheck
-pnpm verify            # build + smoke(27) + load-test(18)
+pnpm verify            # build + smoke + store-test + load-test + panel-test + bundle-test + release-check
 ```
 
-- `pnpm smoke`：25 项纯逻辑，不依赖 DSH 服务（Markdown 往返、召回、候选提交、预算、脚手架纪律、路径围栏、指标、JSONL）。
-- `pnpm load-test`：用**真实的** `@deepseek-ai/dsh-system-prompt` + `@deepseek-ai/dsh-tools` 加载四层，验证工具注册/guard 否决/pre-step 注入/`assemble()` 结果/卸载回收。
+| 脚本 | 覆盖什么 |
+| --- | --- |
+| `pnpm smoke` | 纯逻辑，不依赖 DSH 服务：Markdown 往返、召回、候选提交、预算、脚手架纪律、路径围栏、知识库迁移、指标、JSONL |
+| `pnpm store-test` | 知识库位置：指针优先级、`.pseudo-agi` 前缀映射、迁移/校验/回滚、四层默认路径一致 |
+| `pnpm load-test` | 用**真实的** `@deepseek-ai/dsh-system-prompt` + `@deepseek-ai/dsh-tools` 加载四层：工具注册、guard 否决、pre-step 注入、`assemble()` 结果、卸载回收、`kb_store` 端到端 |
+| `pnpm panel-test` | 面板路由、数据契约、签名 cookie 鉴权、跟随知识库指针 |
+| `pnpm bundle-test` | 分发：自包含产物、单 spec 安装、patch 五行解析、面板客户端、http URL 在线安装 |
+| `pnpm release-check` | 发布闸门：版本/元数据/LICENSE、stale 编译产物、tarball 清单与禁止项、组合包产物不含宿主包 |
 
-两者都在临时目录里跑，不会碰工作区的 `.pseudo-agi/`。
+它们都在临时目录里跑，不会碰工作区的 `.pseudo-agi/`。
 
 ## 2. 分发
 
@@ -33,7 +40,59 @@ pnpm verify            # build + smoke(27) + load-test(18)
 | `@pseudo-agi/store` | 知识库位置：指针解析 + 迁移/回滚（纯库，不是插件） |
 | `@pseudo-agi/bundle` | 分发单元：`dsh.bundle.patch` + `cordis.patch.yml` |
 
-### 已验证的分发路径（`pnpm pack` + `file:`，pnpm 11）
+### 2.1 一条 spec 安装（在线或本地，推荐）
+
+`@pseudo-agi/bundle` 的发布形态是**自包含**的：一个 tgz 里带六个实现包（store/memory/tools/scaffold/governance/panel）和面板客户端，装它一个就够了。
+
+```bash
+pnpm pack-bundle
+# → dist/pseudo-agi-bundle-0.1.0.tgz + .manifest.json（sha256、包版本、文件数）
+```
+
+三种安装入口，装的是同一个文件：
+
+| 入口 | spec |
+| --- | --- |
+| 本地文件 | `pnpm add ./dist/pseudo-agi-bundle-0.1.0.tgz` |
+| 在线 tarball | `pnpm add https://example.com/pseudo-agi-bundle-0.1.0.tgz`（GitHub Release、静态站点、对象存储都可以） |
+| 插件页 | 把上面两个地址之一贴进插件管理器的安装输入框（`parseInstallSpec` 认绝对路径、tarball URL、Git 地址、registry 包名） |
+
+为什么必须自包含：插件管理器一次只接受一条 spec，而 `@pseudo-agi/*` 不在任何 registry 上——只声明依赖的 bundle 装上去会以 `ERR_PNPM_FETCH_404` 失败（`@pseudo-agi/store` 是第一个 404 的）。自包含之后 pnpm 不再需要访问 registry 取兄弟包，tarball 里的 `node_modules` 会被保留。
+
+装好之后 profile 里只有 `@pseudo-agi/bundle` 一个包，patch 的五行各自解析到 `@pseudo-agi/bundle/layers/<layer>`，再由转发文件解析到 bundle 内置副本（理由见 [layers/README.md](../packages/pseudo-agi-bundle/layers/README.md)）。
+
+验收：
+
+```bash
+pnpm bundle-test
+```
+
+它打包、单 spec 安装、逐条解析五行、加载面板客户端，并用本地 http 服务器真装一次 URL——共 12 项。
+
+### 2.2 开发形态（`link:`，本机 profile 用的那种）
+
+改源码即生效，代价是 profile 与工程绑在一起：
+
+```jsonc
+// profile/package.json
+{
+  "dependencies": {
+    "@pseudo-agi/bundle": "link:D:/Doc/AIDoc/Dsh_dev/dsh_agi_dev/packages/pseudo-agi-bundle",
+    "@pseudo-agi/memory": "link:…/packages/pseudo-agi-memory",
+    "@pseudo-agi/tools": "link:…/packages/pseudo-agi-tools",
+    "@pseudo-agi/scaffold": "link:…/packages/pseudo-agi-scaffold",
+    "@pseudo-agi/governance": "link:…/packages/pseudo-agi-governance",
+    "@pseudo-agi/panel": "link:…/packages/pseudo-agi-panel"
+  },
+  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "@pseudo-agi/bundle"] } }
+}
+```
+
+同一份 `cordis.patch.yml` 在两种形态下都成立：`@pseudo-agi/bundle/layers/memory` 从 profile 解析到 bundle，转发文件再从 `packages/pseudo-agi-bundle/node_modules` 解析到 workspace 里的 `@pseudo-agi/memory`。
+
+### 2.3 逐层分发（七包 + `overrides`）
+
+需要单独升级某一层、或不想用自包含产物时：
 
 `pnpm pack` 会把 `workspace:^0.1.0` 转成 `^0.1.0`，而 `@pseudo-agi/*` 不在公共 registry 上——所以直接把 bundle 装进 profile 会解析失败。实测可行的组合是「七个 tarball + `overrides` + 七个直接依赖」：
 
@@ -89,11 +148,11 @@ strict-peer-dependencies=false
 
 DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由你的部署决定，本工程只保证格式正确：
 
-1. `@pseudo-agi/bundle` 的 `package.json` 声明 `dsh.bundle.patch: "./cordis.patch.yml"`；
+1. `@pseudo-agi/bundle` 的 `package.json` 声明 `dsh.bundle.patch: "./cordis.patch.yml"` 与 `dsh.client`（面板浏览器半侧）；
 2. `cordis.patch.yml` 用 `- insert: [...]` 追加五行插件（memory / tools / scaffold / governance / panel）；
-3. 每行 `name` 是包名，`id` 是本 patch 内的唯一 id，`config` 整体传给插件的 `Config`。
+3. 每行的 `name` 是 `@pseudo-agi/bundle/layers/<layer>` —— **不是**裸包名。patch 的 `name` 由 loader 用 `import.meta.resolve` 从 profile 的 package scope 解析，自包含安装后 profile 里只有 bundle，所以要走包内子路径；`id` 是本 patch 内的唯一 id，`config` 整体传给插件的 `Config`。
 
-如果直接写进 profile 而不用 bundle，等价写法：
+如果直接写进 profile 而不用 bundle（六个包都作为 profile 直接依赖或 `link:`），等价写法是裸包名：
 
 ```yaml
 - insert:
@@ -203,7 +262,8 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 10. **治理数据**：`governance_report({})` 返回计数；`.pseudo-agi/governance/<sessionId>.jsonl` 每行一个 `{at, sessionId, kind, detail}`。
 11. **知识库位置**：`kb_store({ action: "status" })` → 报告当前根、来源（指针/配置）、记忆条数与字节；看板顶部「知识库位置」显示同一个路径。
 12. **换位置（可选，见 §6）**：`kb_store({ action: "relocate", to: "D:/AGI-KB/pseudo-agi" })` → `copiedFiles` 与 `verified: true`；重启后 `kb_store status` 的 `source` 变成 `pointer`。
-13. **卸载即消失**：停用 `@pseudo-agi/memory` 后，四个 memory 工具与该 prompt 上下文同时消失；`kb_*` 与治理仍工作。停用 `@pseudo-agi/governance` 不影响其余三层。
+13. **一条 spec 装齐**：按 §2.1 装 `dist/pseudo-agi-bundle-<version>.tgz`（或它的 URL）→ profile 的 `node_modules/@pseudo-agi/` 下**只有** `bundle` 一个目录，`bundle/node_modules/@pseudo-agi/` 下有六个；重启后五行全部挂载，左栏出现「鲸鱼娘 AGI」。
+14. **卸载即消失**：停用 `@pseudo-agi/memory` 后，四个 memory 工具与该 prompt 上下文同时消失；`kb_*` 与治理仍工作。停用 `@pseudo-agi/governance` 不影响其余三层。注意自包含形态下面板入口由 bundle 的 `dsh.client` 提供，停用 `pseudo-agi-panel` 行只会让面板的数据接口 404。
 
 ## 6. 换位置存储（`kb_store`）
 

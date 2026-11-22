@@ -30,10 +30,11 @@
 | [packages/pseudo-agi-governance](packages/pseudo-agi-governance) | 治理层：只读观察器 + 指标 + JSONL 审计 + `governance_report` |
 | [packages/pseudo-agi-panel](packages/pseudo-agi-panel) | 左侧栏只读面板：Host 一条同源路由 + 客户端两个 slot；自验 `dsh-auth` 签名 cookie；显示知识库位置 |
 | [packages/pseudo-agi-store](packages/pseudo-agi-store) | 知识库位置：指针解析 + 迁移/回滚原语（纯库，无构建步骤，不是插件） |
-| [packages/pseudo-agi-bundle](packages/pseudo-agi-bundle) | 分发单元：`package.json` 的 `dsh.bundle.patch` + `cordis.patch.yml` |
+| [packages/pseudo-agi-bundle](packages/pseudo-agi-bundle) | 自包含分发单元：`dsh.bundle.patch` + 五行 patch + `layers/*` 转发入口 + 面板 `./client`；一条 spec 装齐
 | [docs/architecture.md](docs/architecture.md) | 事件流、注册/释放清单、磁盘布局与知识库活动根、与 DSH 契约的对应关系 |
 | [docs/spec-compliance.md](docs/spec-compliance.md) | 三条硬约束逐条对照；方案里几处 API 名称的纠正 |
 | [docs/install.md](docs/install.md) | 构建、打包、装载、最小闭环配置、验收清单、换位置存储操作 |
+| [docs/publishing.md](docs/publishing.md) | 发布：版本策略、六个层包与组合包产物的发布顺序、`release-check` 闸门、已知坑 |
 
 ## 三条硬约束怎么落实
 
@@ -58,11 +59,22 @@ ctx.effect(() => async () => { await journal.flush() })
 
 ```bash
 pnpm install
+pnpm clean:build    # 先清 lib/dist；tsc 不会删陈旧产物
 pnpm build          # 每个包各自 tsc 到 lib/
 pnpm typecheck
+pnpm verify         # 五套测试 + 发布闸门（见下方状态表）
+
+pnpm pack-bundle    # 一条 spec 可分发的自包含产物 → dist/pseudo-agi-bundle-<ver>.tgz
+pnpm release-check  # 发布前检查实际会发出去的内容
 ```
 
-装载与验收见 [docs/install.md](docs/install.md)。只想要最小闭环时，启用 `pseudo-agi-memory` + `pseudo-agi-tools` 两层即可（脚手架、治理层与面板均可选）。
+发布流程见 [docs/publishing.md](docs/publishing.md)。
+
+装载与验收见 [docs/install.md](docs/install.md)：
+
+- **在线/本地一条 spec 安装**：`pnpm add <tgz 或其 URL>`，装这一个包就够（六个实现包在它自己的 `node_modules` 里）；
+- **开发形态**：六个包各自 `link:` 到 profile，改源码即生效；
+- 只想要最小闭环时，启用 `pseudo-agi-memory` + `pseudo-agi-tools` 两层即可（脚手架、治理层与面板均可选）。
 
 ## 这个方案能做到 / 明确做不到
 
@@ -81,7 +93,9 @@ pnpm typecheck
 | 知识库位置：指针优先级、迁移、回滚、四层一致 | `pnpm store-test` | 23/23 |
 | 真实服务加载 + 注入 + 卸载 + `kb_store` 端到端 | `pnpm load-test` | 26/26 |
 | 面板路由 / 数据契约 / 鉴权 / 跟随指针 | `pnpm panel-test` | 16/16 |
-| 真机：五层加载、面板入口、`read-only` 拒绝写入 | 手动（见 `AGI_STATE.md` 验证记录） | 通过（换位置待重启后真机确认） |
+| 分发：自包含产物、单 spec 安装、五行解析、**http URL 在线安装** | `pnpm bundle-test` | 12/12 |
+| 发布闸门：版本/元数据/LICENSE、stale 产物、tarball 清单、无宿主包 | `pnpm release-check` | 31/31 |
+| 真机：五层加载、面板入口、`read-only` 拒绝写入 | 手动（见 `AGI_STATE.md` 验证记录） | 通过（换位置与自包含安装待重启后真机确认） |
 | 真实 LLM 往返、审批 UI 交互 | — | ⛔ 有意未验证（`writeRequiresApproval: false`，该路径不触发） |
 
 `load-test` 加载的是**真实的** `@deepseek-ai/dsh-system-prompt` 与 `@deepseek-ai/dsh-tools`，因此这三点是按真机语义验证的，不是替身：

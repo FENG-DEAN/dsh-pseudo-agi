@@ -17,5 +17,19 @@
     "index.d.ts",
     "README.md"
   ],
-  "license": "MIT"
+  "author": "FENG-DEAN <firebanyan@gmail.com>",
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "storage",
+    "knowledge-base",
+    "relocation"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

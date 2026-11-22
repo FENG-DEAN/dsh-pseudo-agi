@@ -19,7 +19,22 @@
     "lib/**/*.d.ts",
     "src"
   ],
+  "author": "FENG-DEAN <firebanyan@gmail.com>",
   "license": "MIT",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "tools",
+    "file-access",
+    "guard"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.19.0",
     "@pseudo-agi/store": "workspace:^0.1.0"

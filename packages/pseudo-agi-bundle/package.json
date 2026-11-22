@@ -7,19 +7,48 @@
   "exports": {
     ".": "./index.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
+    "./client": "./client.js",
+    "./layers/*": "./layers/*.js",
     "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "files": [
     "index.js",
+    "client.js",
+    "layers",
     "cordis.patch.yml",
     "locale",
     "README.md"
   ],
+  "author": "FENG-DEAN <firebanyan@gmail.com>",
   "license": "MIT",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "bundle",
+    "agi",
+    "memory",
+    "panel"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
     }
   },
   "dependencies": {
@@ -29,5 +58,16 @@
     "@pseudo-agi/scaffold": "workspace:^0.1.0",
     "@pseudo-agi/store": "workspace:^0.1.0",
     "@pseudo-agi/tools": "workspace:^0.1.0"
+  },
+  "bundledDependencies": [
+    "@pseudo-agi/governance",
+    "@pseudo-agi/memory",
+    "@pseudo-agi/panel",
+    "@pseudo-agi/scaffold",
+    "@pseudo-agi/store",
+    "@pseudo-agi/tools"
+  ],
+  "scripts": {
+    "prepublishOnly": "node ../../scripts/assert-packed-bundle.mjs"
   }
 }
