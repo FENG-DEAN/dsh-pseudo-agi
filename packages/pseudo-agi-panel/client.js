@@ -62,6 +62,26 @@ window.__ModuleLoader__.load({
       },
     }
 
+    /**
+     * Render an ISO timestamp in the viewer's own timezone.
+     *
+     * The panel used to slice the ISO string, which shows UTC — in UTC+8 that
+     * is an eight-hour lie, and it made the event list look like it came from
+     * another day. `toLocale*` resolves against the browser's zone instead.
+     *
+     * @param value ISO timestamp; may be absent or malformed.
+     * @param part which half to render.
+     * @returns display text, or '' when there is nothing usable.
+     */
+    function localTime(value, part) {
+      if (typeof value !== 'string' || value.length === 0) return ''
+      const at = new Date(value)
+      if (Number.isNaN(at.getTime())) return part === 'date' ? value.slice(0, 10) : ''
+      return part === 'date'
+        ? at.toLocaleDateString()
+        : at.toLocaleTimeString(undefined, { hour12: false })
+    }
+
     const CSS = `
 .pa-root { display: flex; flex-direction: column; height: 100%; min-height: 0; box-sizing: border-box; overflow-y: auto; color: var(--dsw-alias-label-primary); font-size: 13px; background: var(--dsw-alias-bg-layer-1, transparent); }
 .pa-head { display: flex; align-items: flex-start; gap: 16px; padding: 22px 26px 14px; flex: none; }
@@ -202,14 +222,14 @@ window.__ModuleLoader__.load({
           h('span', { className: 'pa-layer' }, record.layer),
           h('span', { className: 'pa-name', title: record.title }, record.title),
           h('span', { className: 'pa-meta' },
-            `${record.confidence === null ? '?' : record.confidence.toFixed(2)} · ${String(record.updatedAt ?? '').slice(0, 10)}`)))
+            `${record.confidence === null ? '?' : record.confidence.toFixed(2)} · ${localTime(record.updatedAt, 'date')}`)))
 
       const eventRows = events.length === 0
         ? h('div', { className: 'pa-empty' }, t('emptyEvents'))
         : events.slice().reverse().map((record, index) => h('div', { className: 'pa-row', key: `${record.at ?? ''}-${index}` },
           h('span', { className: 'pa-layer' }, String(record.kind ?? '?')),
           h('span', { className: 'pa-name' }, summarise(record)),
-          h('span', { className: 'pa-meta' }, String(record.at ?? '').slice(11, 19))))
+          h('span', { className: 'pa-meta' }, localTime(record.at, 'time'))))
 
       return h('div', { className: 'pa-root' },
         h('style', null, CSS),
