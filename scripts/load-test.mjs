@@ -88,7 +88,16 @@ const memoryConfig = resolveConfig(memory.Config, {
   root: join(workspace, 'memory'),
   maxInjectTokens: 200,
 })
-const toolsConfig = resolveConfig(tools.Config, { workspaceRoot: workspace, knowledgeRoots: ['docs'] })
+// Route 1 acceptance: a second project root OUTSIDE the workspace, configured
+// as an absolute knowledge root and an absolute write root. This is what proves
+// "意识全局、记忆一份、手脚跨项目" — without it the arrays are only untested code.
+const externalRoot = await mkdtemp(join(tmpdir(), 'pseudo-agi-external-'))
+await writeFile(join(externalRoot, 'external.md'), '# 外部项目\n\n跨工作区标记词：external-marker\n', 'utf8')
+const toolsConfig = resolveConfig(tools.Config, {
+  workspaceRoot: workspace,
+  knowledgeRoots: ['docs', externalRoot],
+  writeRoots: ['.', externalRoot],
+})
 const scaffoldConfig = resolveConfig(scaffold.Config, { injectPerTurn: 1 })
 const governanceConfig = resolveConfig(governance.Config, {
   workspaceRoot: workspace,
@@ -229,6 +238,28 @@ try {
     const value = await run('kb_search', { query: '不存在的词zebra' })
     assert.equal(value.found, false)
     assert.match(value.note ?? '', /没找到/)
+  })
+
+  await check('跨工作区：kb_search 命中 workspace 之外的绝对根', async () => {
+    const value = await run('kb_search', { query: '跨工作区标记词' })
+    assert.equal(value.found, true)
+    const hit = value.hits.find(entry => entry.path.includes('external.md'))
+    assert.ok(hit, `expected external.md in hits, got ${JSON.stringify(value.hits)}`)
+    assert.equal(hit.line, 3)
+    // cite() renders paths relative to the workspace, so a cross-root hit is
+    // reported as ../<other>/file rather than silently absolute.
+    assert.ok(hit.path.startsWith('..'), `cross-root hit should be workspace-relative: ${hit.path}`)
+  })
+
+  await check('跨工作区：kb_read 读外部根，controlled_write 写外部根', async () => {
+    const read = await run('kb_read', { path: join(externalRoot, 'external.md') })
+    assert.match(String(read.content), /跨工作区标记词/)
+    const written = await run('controlled_write', {
+      path: join(externalRoot, 'written-by-tools.md'),
+      content: '外部根写入\n',
+    })
+    assert.equal(written.created, true)
+    assert.equal(await readFile(join(externalRoot, 'written-by-tools.md'), 'utf8'), '外部根写入\n')
   })
 
   await check('kb_read 读真实内容，越界被拒', async () => {
@@ -437,6 +468,7 @@ try {
     }
   }
   await rm(workspace, { recursive: true, force: true })
+  await rm(externalRoot, { recursive: true, force: true })
   if (movedParent !== null) await rm(movedParent, { recursive: true, force: true })
 }
 

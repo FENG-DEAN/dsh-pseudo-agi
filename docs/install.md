@@ -301,6 +301,37 @@ kb_store({ action: "rollback" })                                               #
 - 搬出去之后 `kb_search` / `kb_read` 仍可读（知识根可以是绝对路径）；`controlled_write` 只在 `writeRoots` 也显式包含新位置时才可写——读得到不等于写得进。
 - `AGI_STATE.md` 与 `docs/` 不跟着搬：前者是工程状态，后者是工程文档。
 
+## 6.5 跨工作区（一份记忆 + 多项目手脚）
+
+默认所有层只认 `workspaceRoot` 一个目录。要让同一个意识在多个项目间工作，把 `tools` 的 roots 配成多个绝对路径——`knowledgeRoots` 与 `writeRoots` 都是数组（`packages/pseudo-agi-tools/src/config.ts`）：
+
+```yaml
+- id: pseudo-agi-tools
+  name: '@pseudo-agi/bundle/layers/tools'
+  config:
+    workspaceRoot: C:/Users/<you>/dsh-pseudo-agi   # 记忆与工作台的固定家
+    knowledgeRoots: [
+      <project-a>/docs,
+      C:/Users/<you>/dsh-pseudo-agi/.pseudo-agi/memory,
+    ]
+    writeRoots: [
+      <project-a>,
+      C:/Users/<you>/dsh-pseudo-agi,
+    ]
+    writeRequiresApproval: false   # config 整份替换，不重述会回到默认 true
+```
+
+能力与边界（`scripts/load-test.mjs` 的「跨工作区」两条断言钉住了前三行）：
+
+| 工具 | 跨项目？ | 行为 |
+| --- | --- | --- |
+| `kb_search` / `kb_read` | ✅ | 遍历 `knowledgeRoots` 里的所有目录；命中路径相对 workspace 给出，跨根时形如 `../<other>/file` |
+| `controlled_write` | ✅ | 只能写 `writeRoots` 内的路径 |
+| `memory_recall` / 记忆写入 | ❌ | 仍只有一份库（`workspaceRoot/.pseudo-agi`），不按项目分区 |
+| `AGI_STATE.md` / 治理日志 | ❌ | 只在 `workspaceRoot` |
+
+也就是说：**检索和手脚可以跨项目，记忆本体是一份**。想让旧项目的记忆也参与召回，把它的 `.pseudo-agi/memory/**` 并入当前库即可（同一套 Markdown 格式）。
+
 ## 7. 回滚与取证
 
 - 停用某层 = 删掉 patch 里对应行（或 `disabled: true`），不需要改代码。
