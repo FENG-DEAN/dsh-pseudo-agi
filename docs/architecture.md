@@ -8,6 +8,7 @@
 | 手脚 | `pseudo-agi-tools` | 只读取证、受控写入、guard 边界 | 不记忆、不决定做什么 |
 | 意识脚手架 | `pseudo-agi-scaffold` | 每轮首步注入一条纪律、发 `scaffold-step` 事件 | **不路由、不选工具、不改 loop 决策、不读用户文本做分类** |
 | 治理 | `pseudo-agi-governance` | 只读观察、指标、JSONL、report 工具 | 不改变任何决策 |
+| 面板 | `pseudo-agi-panel` | 左侧栏入口 + 只读视图（分层/记忆/事件/工作台）、一条同源 JSON 路由 | **不写文件、不调工具、不碰 loop** |
 
 **判断权归模型**。scaffold 必须 `await next()` 之后只追加、不否决；它没有关键词表，也不看 `ctx.tools.definitions()`。四层之间没有硬依赖，加载组合是自由的。
 
@@ -37,6 +38,9 @@
 | `ctx.tools.guard(...)` | tools | 同上 |
 | `ctx.on('tools/pre-execute')`、`ctx.on('agent/pre-step')` 等 12 个监听 | 各自插件 | `ctx.on` 内部 `fiber.effect` |
 | `ctx.inject(['systemPrompt'], ...)` | memory | 注入的子 Fiber |
+| `ctx.inject(['credentials'], ...)` / `ctx.inject(['sandboxPolicy'], ...)` | panel / tools | 注入的子 Fiber |
+| `ctx.webServer.register({ kind: 'prefix', ... })` | panel | 返回的 `off()`，经 `ctx.effect` 持有 |
+| `ctx.slots.register(...)`（客户端半侧） | panel | 随客户端模块卸载 |
 | `ctx.effect(() => async () => journal.flush())` | governance | 显式注册，卸载时 await |
 | `WeakMap<Agent, ...>` 脚手架/注入状态 | scaffold / memory | 随 Agent 对象回收，无显式清理 |
 
@@ -104,3 +108,30 @@ updatedAt: "2026-02-04T02:11:00.000Z"
 - **为什么注入的记忆要关掉插值？** `systemPrompt.context` 默认会解析 `{{name}}`，而记忆正文是任意文本；`interpolate: false` 防止一条含 `{{` 的记忆让整次装配抛错。
 - **为什么注入要每步重算？** 记忆会在同一轮里新增（本轮的 `memory_commit`），而装配发生在 pre-step 之后；重算一次的成本是几次 `readdir`。
 - **为什么治理层不直接读 memory/tools 的运行时？** 事件让"关掉治理层"成为纯粹的减法，也让"关掉记忆层"时治理层仍能工作。
+
+## 7. 浏览器面板：客户端插件的接线约定
+
+面板是唯一一个"两半"的层：Host 半侧跑在 DSH 进程里，Client 半侧跑在浏览器里。
+
+**Host 半侧**只注册一条同源路由：
+
+```js
+ctx.webServer.register({ kind: 'prefix', path: '/pseudo-agi/api', handler })
+```
+
+它把所有数据（分层计数、记忆列表、治理事件、`AGI_STATE.md` 摘要）算好，用 `GET /pseudo-agi/api/state` 一次返回；只有 `GET` 存在，其余方法 405、其余路径 404。
+
+**Client 半侧**由 `package.json` 的 `dsh.client` 声明（`platform: 'web'`、`immediately: true`、注入 `dsh-client-locale` / `ui-renderer` / `ui-layout` / `ui-sidebar`），入口是 `exports['./client']`，代码必须包在 `window.__ModuleLoader__.load({ id, factory })` 里，靠 `require('react')` 取共享依赖。
+
+**两个 slot**（`client.js:239,244`）：
+
+| slot | 作用 |
+| --- | --- |
+| `sidebar.panellist` | 左侧栏的入口行：「鲸鱼娘 AGI」 |
+| `main` | 打开后占据主区域的面板主体 |
+
+两者都用 `ctx.slots.inject(name, () => ctx.slots.register({ ... }))` 注册，随模块卸载自动回收。面板的中英文案走 `ctx.locale.register(NS, STRINGS)`，配色全部用 `--dsw-alias-*` 主题变量，不写死颜色。
+
+**鉴权是面板自己的责任，不是宿主给的。** 插件 prefix 路由不在 Host Connection 的鉴权覆盖内（`dsh-host-webserver` 的 `register()` 签名里没有任何 auth 参数），所以面板必须自验浏览器会话 cookie：从 `ctx.inject(['credentials'])` 拿 `client-connection/browser-session` 的 secret，按 `dsh-auth-<sha256(authority)>` 验 HMAC-SHA256 签名，并校验 cookie 绑定的 authority 与请求 `host` 一致、未过期。拿不到 secret（最小宿主）时放行并只告警一次，避免把面板锁死。
+
+> 同类的 `@local/dsh-preset-editor` 也注册了 prefix 路由却**不做任何鉴权**（`index.js:261-266`）——这是 DSH 插件生态的常态，不是本工程的疏漏。本工程选择多做一层，是因为面板会把 `AGI_STATE.md` 全文和全部记忆标题吐出去。

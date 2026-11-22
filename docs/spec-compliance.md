@@ -36,6 +36,9 @@
 | 3 | memory 用 `process.cwd()` 解析证据 | 会话 cwd 与宿主 cwd 不一致时，召回正常但**证据校验看错目录**，合法候选被误拒 | 新增 `workspaceRoot` 配置项，`root` 与 `file` 证据都相对它解析（[config.ts](../packages/pseudo-agi-memory/src/config.ts)） |
 | 4 | Config 接口字段写成 `readonly string[]` | Schemastery 的 `required().default` 要求可变数组，四包全部编译失败 | 接口改为 `string[]`（属性仍 `readonly`，不鼓励就地改配置） |
 | 5 | `candidates.records.sort()` / `asJson` 返回值过宽 | 只读数组不可 `sort`；`JsonValue` 不能赋给 `Record<string, JsonValue>` | 展开后排序；新增 `asJsonObject()` 收窄 |
+| 6 | governance 用 `process.cwd()` 解析 journal 目录 | 宿主 cwd 不是工程目录且不可写，`mkdir`/`append` 失败被静默吞掉，**JSONL 永远为空**，而内存指标看起来正常 | 加 `workspaceRoot`，与 memory 完全一致 |
+
+第 3 与第 6 条是同一个毛病犯了两次：**任何写盘插件都必须显式配置 `workspaceRoot`，绝不能用 `process.cwd()`**。宿主进程的 cwd 通常不是工程目录，且可能不可写；更糟的是失败往往被静默吞掉，症状是"功能缺失"而不是"报错"。
 
 最初预判的三个风险**全部没有触发**：`z.union(MEMORY_LAYERS)` 形态可用、`ctx.inject(['systemPrompt'], cb)` 接受 `void` 回调、`declare module '@deepseek-ai/dsh-llm'` 的 `MessageSourceMap` 合并在包根有效。
 
@@ -43,15 +46,17 @@
 
 | 项 | 状态 |
 | --- | --- |
-| 四包 `tsc` 编译 | ✅ 通过 |
-| 25 项纯逻辑（格式往返、召回、候选提交、预算、脚手架纪律、围栏、指标、JSONL） | ✅ 通过 |
-| 真实 `SystemPrompt` + `ToolsService` 下加载四层、注册 8 个工具 | ✅ 通过 |
+| 五包 `tsc` 编译 | ✅ 通过 |
+| 30 项纯逻辑（smoke：格式往返、召回、候选提交、预算、脚手架纪律、围栏、策略遵守、指标、JSONL） | ✅ 通过 |
+| 14 项面板路由（panel-test：数据契约、404/405、签名 cookie 鉴权、卸载撤销） | ✅ 通过 |
+| 真实 `SystemPrompt` + `ToolsService` 下加载五层、注册 8 个工具 | ✅ 通过 |
 | `checkGuards()` 单调否决（越界/禁止段/禁止扩展名） | ✅ 通过 |
+| `controlled_write` 遵守 `ctx.sandboxPolicy`（`read-only` 拒绝 / `danger-full-access` 放行） | ✅ 真机双向验证 |
 | 工具体真实读写与记忆闭环 | ✅ 通过 |
 | `agent/pre-step` 注入 → `assemble()` 结果含注入块 | ✅ 通过 |
 | 卸载后工具/guard/prompt context 全部回收 | ✅ 通过 |
-| 真实 LLM 往返、审批 UI 交互、`approval policy = never` 下的拒绝 | ⛔ 未验证（需要完整 DSH 会话） |
-| 装进 profile 后 GUI 内实际可用 | ⛔ 未验证（见 [install.md](install.md)） |
+| 装进 profile 后 GUI 内实际可用（侧栏「鲸鱼娘 AGI」入口 + 面板数据） | ✅ 真机验证 |
+| 真实 LLM 往返、审批 UI 交互、`approval policy = never` 下的拒绝 | ⛔ 未逐项验证（需完整交互会话） |
 
 ## 5. 安全与性能上的已知限制
 
@@ -59,19 +64,20 @@
 - 召回是线性扫描 + 词袋打分，记录数上万时应换成倒排索引（当前设计刻意保持"无持久索引可丢"）。
 - `kb_search` 每次调用都重新遍历知识根；大仓库下应加 `roots` 限定或缓存（缓存会引入失效问题，故未做）。
 - 记忆写入没有冲突检测：同一 id 的并发提交是最后写入者胜。
+- **记忆之间没有冲突消解机制**：两条记录互相矛盾时（现实中已出现一次：一条断言"面板无鉴权、是否契约未决"，另一条断言"已确证、可复用 secret"），只能靠模型读出来、判断、手动 `memory_forget`。缺少时间序裁决、置信度衰减与证据覆盖。这是"记忆载体"与"心智"之间最明显的一步差。
 - 治理层的 JSONL 是追加写，没有轮转；长期运行需要外部清理。
 
 
-## 6. 这不是沙箱
+## 6. 围栏 + 统一策略，但都不是内核沙箱
 
-路径围栏解决的是"模型被诱导写到别处"，不解决"进程被攻破"。具体地：
+本工程的写工具做两层检查：
 
-- `controlled_write` 只写 UTF-8 文本，拒绝 `.exe/.dll/.bat/.ps1` 等扩展名，限制单次字节数；
-- 拒绝 `.git`、`node_modules`、`.ssh`、`.env` 等路径段；
-- 落在 `writeRoots` 之外一律拒绝，`resolveInside` 用 `path.relative` 判定（Windows/macOS 大小写不敏感）；
-- **没有**限制工具开销、没有网络隔离、没有进程级沙箱。
+- **自有围栏**：只写 UTF-8 文本，拒绝 `.exe/.dll/.bat/.ps1` 等扩展名，限制单次字节数；拒绝 `.git`、`node_modules`、`.ssh`、`.env` 等路径段；落在 `writeRoots` 之外一律拒绝，`resolveInside` 用 `path.relative` 判定（Windows/macOS 大小写不敏感）。
+- **DSH 统一文件策略**：`controlled_write` 经 `ctx.inject(['sandboxPolicy'])` 取得策略服务，用 `resolve({ session: exec.agent.session })` 解析当前会话模式，`read-only` 直接拒绝。**注意 `exec.agent` 是 `Agent` 不是 `Session`**，会话要从 `agent.session` 取——传错对象会让 resolver 抛异常，若被兜底 `catch` 吞掉，症状会伪装成"没有策略可用"。
 
-要真正的沙箱边界，应该让写操作走 DSH 官方的 bash/沙箱工具体系，本工程的工具只作为"低风险、可审阅的文本写入"通道。
+这样一来，它与 DSH 自带的 `write`/`edit`（走 `ctx.fs`）和 `pwsh`（走 `ctx.shell`）共用一个策略归属，不再是绕过策略的后门。
+
+但两者都**只是策略检查，不是内核边界**：检查发生在可信代码里，信任的是"模型控制的只有路径"这一前提；进程被攻破、TOCTOU、网络访问都不在覆盖范围内。真正的内核级隔离由 `ctx.sandbox` 的进程后端负责（Windows 上是 ACL 受限令牌），那是 `pwsh` 消费的，不是本工程的写工具。
 
 ## 7. 威胁 → 缓解
 
