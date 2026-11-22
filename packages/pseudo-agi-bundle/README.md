@@ -32,7 +32,7 @@ package/
 pnpm add @pseudo-agi/bundle
 
 # 直接从 GitHub 安装（不需要构建，仓库里已带产物）
-pnpm add "github:FENG-DEAN/dsh-pseudo-agi#<commit>&path:packages/pseudo-agi-bundle"
+pnpm add "github:FENG-DEAN/dsh-pseudo-agi#v0.1.0&path:packages/pseudo-agi-bundle"
 
 # 发布产物 / GitHub Release 上的 tarball
 pnpm add https://github.com/<owner>/<repo>/releases/download/v0.1.0/pseudo-agi-bundle-0.1.0.tgz
