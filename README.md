@@ -34,7 +34,7 @@
 
 DSH 插件页的安装输入框接受同样的 spec（包名 / 绝对路径 / tarball URL / Git 地址）。仓库里已带构建产物（`vendor/` 与 `client.js`），**不会在你机器上重新构建**。
 
-`packages/` 下是六个层包的源码，它们不进 npm 包（`files` 白名单排除）；Git 安装会带上整仓库副本，功能无影响、体积大一些。
+`packages/` 下是六个层包的源码，它们不进发布产物：`files` 白名单只放行 `index.js`、`client.js`、`layers/`、`vendor/`、`cordis.patch.yml`、`locale/`、`README.md`、`LICENSE`。npm 与 Git 安装都按这份白名单打包（实测 Git 直装后不含 `packages/`）。
 
 **装好即可用，不需要配置。** `workspaceRoot` 留空时默认落在 `<用户主目录>/dsh-pseudo-agi`（Windows 上是 `C:\Users\<你>\dsh-pseudo-agi`）——稳定、可写，**绝不会回退到 DSH 的安装目录**：
 

@@ -23,7 +23,7 @@ pnpm add github:FENG-DEAN/dsh-pseudo-agi          # 粘仓库地址即可，不�
 
 `vendor/` 与 `client.js` 是**提交进仓库的生成文件**（见 [vendor/README.md](../vendor/README.md)），由 `pnpm build && pnpm vendor` 重建，`pnpm release-check` 逐文件比对防止忘记重跑。
 
-> Git 安装取的是整个仓库副本（pnpm 不为 git 依赖应用 `files`），所以 `packages/`、`scripts/`、`docs/` 也会落到 `node_modules` 里——功能无影响，只是体积比 npm tarball 大。
+> 发布产物只含 `files` 白名单：`index.js`、`client.js`、`layers/`、`vendor/`、`cordis.patch.yml`、`locale/`、`README.md`、`LICENSE`。`packages/`、`scripts/`、`docs/` 不进包；pnpm 对 Git 依赖同样按 `files` 打包（实测直装后 `node_modules/@pseudo-agi/bundle` 里没有 `packages/`）。
 
 ## 安装
 
