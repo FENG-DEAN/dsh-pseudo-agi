@@ -29,16 +29,54 @@ pnpm verify            # build + smoke(27) + load-test(18)
 | `@pseudo-agi/tools` | 手脚层 |
 | `@pseudo-agi/scaffold` | 意识脚手架（注入纪律，不做路由） |
 | `@pseudo-agi/governance` | 治理层（对前两者只有编译期类型依赖） |
+| `@pseudo-agi/panel` | 浏览器面板（Host 路由 + 客户端半侧，只读） |
 | `@pseudo-agi/bundle` | 分发单元：`dsh.bundle.patch` + `cordis.patch.yml` |
 
-发布前 `packages/pseudo-agi-bundle/package.json` 里的 `workspace:^0.1.0` 需要换成真实版本（`pnpm publish` 会自动替换）。只想本地试跑时，用 `pnpm link`/`file:` 把四个包装进 DSH 的插件安装位置即可，只要 Loader 能按包名解析到它们。
+### 已验证的分发路径（`pnpm pack` + `file:`）
+
+`pnpm pack` 会把 `workspace:^0.1.0` 转成 `^0.1.0`，而 `@pseudo-agi/*` 不在公共 registry 上——所以直接把 bundle 装进 profile 会解析失败。实测可行的组合是「六个 tarball + `pnpm.overrides`」：
+
+```jsonc
+// profile/package.json
+{
+  "dependencies": {
+    "@pseudo-agi/bundle": "file:./packs/pseudo-agi-bundle-0.1.0.tgz"
+  },
+  "pnpm": {
+    // bundle 的 ^0.1.0 由 overrides 落回本地 tarball
+    "overrides": {
+      "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.1.0.tgz",
+      "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.1.0.tgz",
+      "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.1.0.tgz",
+      "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.1.0.tgz",
+      "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.1.0.tgz"
+    }
+  }
+}
+```
+
+外加 `.npmrc`：
+
+```ini
+auto-install-peers=false
+strict-peer-dependencies=false
+```
+
+理由：这些插件把 `@deepseek-ai/*` 声明为 peer，而那些包由宿主运行时提供、不在 registry 上；让 pnpm 去自动安装必然失败。
+
+**验证结果**（2026-11-22）：六个 tarball 全部 pack 成功；按上述配置 `pnpm install --ignore-scripts` 退出码 0；`node_modules/@pseudo-agi/` 下五个层包齐全，`bundle/cordis.patch.yml` 与各包 `lib/index.js`、`panel/client.js` 均在位；patch 里引用的五个插件名全部可解析。
+
+**分发时仍必须处理的两件事**：
+
+1. `cordis.patch.yml` 里每个 `workspaceRoot: .` 都是相对宿主进程 cwd 的——装好后必须在 profile 的 `cordis.patch.yml` 里覆盖成绝对路径（这个缺陷在 memory 与 governance 上各犯过一次，见 [spec-compliance](spec-compliance.md) §3）；
+2. `writeRequiresApproval` 在 bundle 里默认为 `false`（意识即模型），需要人工闸门的部署要显式改成 `true`。
 
 ## 3. 装载
 
 DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由你的部署决定，本工程只保证格式正确：
 
 1. `@pseudo-agi/bundle` 的 `package.json` 声明 `dsh.bundle.patch: "./cordis.patch.yml"`；
-2. `cordis.patch.yml` 用 `- insert: [...]` 追加四行插件；
+2. `cordis.patch.yml` 用 `- insert: [...]` 追加五行插件（memory / tools / scaffold / governance / panel）；
 3. 每行 `name` 是包名，`id` 是本 patch 内的唯一 id，`config` 整体传给插件的 `Config`。
 
 如果直接写进 profile 而不用 bundle，等价写法：

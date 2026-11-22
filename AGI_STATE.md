@@ -34,11 +34,10 @@
 ## 下一步（按优先级）
 
 1. **跨会话连续性**：下次冷启动只靠本文件 + procedural 记忆能否恢复状态——已部分验证三次。
-2. **评估 bundle 分发**：`pnpm pack` + `file:` 装一次，验证"npm 包 + cordis.patch.yml"这条分发路径（当前是 `link:` 五包）。
-3. **面板标注已取代的记忆**（小）：`packages/pseudo-agi-panel/index.js` 的 `parseRecord` 不读 `supersededBy`，历史记录会在面板里显示成普通记录，应标注或折叠。
-4. **记忆的自动裁决**（大，未做）：显式 `supersedes` 已实现；时间序裁决与置信度衰减仍未做——两条同等置信的记录并存时仍靠模型自己分辨。
+2. **记忆的自动裁决**（大，未做）：显式 `supersedes` 已实现；时间序裁决与置信度衰减仍未做——两条同等置信的记录并存时仍靠模型自己分辨。
+3. **真机确认本轮两处改动**：面板标注已取代记忆（`index.js` 需重启、`client.js` 需刷新）与 bundle 分发修复（不影响运行中的 profile，下次安装时生效）。
 
-已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到；面板路由鉴权已实现（`pseudo-agi-panel` 验 Host Connection 的签名 cookie），且**用户确认浏览器面板在鉴权后仍能正常刷出数据**；`controlled_write` 已**真机双向验证**遵守 `sandboxPolicy`（`read-only` 拒绝、`danger-full-access` 放行）；文档补全（`spec-compliance` §3/§4/§5/§6 + `architecture` §1/§3/§7，`kb_search("sidebar.panellist")` 从 0 命中变为 3 行）；记忆冲突消解（`memory_candidate` 支持 `supersedes`，提交时写 `supersededBy` 并默认过滤，smoke 35/35）。
+已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到；面板路由鉴权已实现（`pseudo-agi-panel` 验 Host Connection 的签名 cookie），且**用户确认浏览器面板在鉴权后仍能正常刷出数据**；`controlled_write` 已**真机双向验证**遵守 `sandboxPolicy`（`read-only` 拒绝、`danger-full-access` 放行）；文档补全（`spec-compliance` §3/§4/§5/§6 + `architecture` §1/§3/§7，`kb_search("sidebar.panellist")` 从 0 命中变为 3 行）；记忆冲突消解（`memory_candidate` 支持 `supersedes`，提交时写 `supersededBy` 并默认过滤，smoke 35/35）；面板标注已取代记忆（`supersededBy` 透传 + 删除线/降透明度 + 中英文案）；bundle 分发修复并验证（`controller`→`scaffold`、补 `panel`、审批默认值修正、pack+`file:`+`overrides` 全链路跑通）。
 
 ## 阻塞 / 待决
 
@@ -187,3 +186,31 @@
 - **修法**：新增 `localTime(value, part)`，用 `toLocaleDateString()` / `toLocaleTimeString(undefined, { hour12: false })` 按浏览器时区渲染；无效时间戳回退到原始片段而不是抛错。
 - **验证**：本地按 `Asia/Hong_Kong` 算得 `16:58:02`（改前为 `08:58:02`）；`node --check` 通过；用户刷新页面后确认显示正确。
 - **顺带记下**：改这行时我漏了一个收尾括号，`node --check` 当场报 `missing ) after argument list`——JS 文件改完先做语法检查，比在浏览器里看白屏强。
+
+### 2026-11-22 · 面板标注已被取代的记忆
+
+- `packages/pseudo-agi-panel/index.js` 的 `parseRecord` 透传 `supersededBy`：`null` 表示在用，字符串表示已被另一条取代。
+- `client.js`：已取代的行加 `pa-retired` 样式（不透明度 .5 + 删除线），meta 末尾追加「已取代 / replaced」，hover 的 `title` 里给出取代者 id。
+- `panel-test` 增加断言：`supersededBy` 必须是 `null` 或字符串。
+- **未真机确认**：`index.js` 要重启、`client.js` 要刷新页面。
+
+### 2026-11-22 · bundle 分发修复并端到端验证
+
+**发现 bundle 已过时到无法使用**：
+
+- patch 仍引用 `@pseudo-agi/controller`——该包早已改名为 `scaffold`，且关键词路由被整体删除，按原样加载会失败；
+- 没有 `panel` 行；
+- `writeRequiresApproval: true`，与"意识即模型、写操作不找人审批"的现状相反；
+- 每行 `workspaceRoot: .` 都相对宿主 cwd。
+
+**修复**：`controller` → `scaffold`；补 `panel` 行；审批默认改 `false`；patch 顶部加显著的 `workspaceRoot` 覆盖警告；`package.json` 的 `dependencies` 补上 `@pseudo-agi/panel`。
+
+**验证**（全程在临时目录，未动真实 profile）：
+
+- 六个包 `pnpm pack` 全部成功，bundle tarball 2088 bytes；
+- 解包确认 `workspace:^0.1.0` 已被转成 `^0.1.0`，patch 里是 `scaffold` + `panel`；
+- 临时目录按「六 tarball + `pnpm.overrides` + `.npmrc` 关 peer 自动安装」安装，`pnpm install --ignore-scripts` **退出码 0**；
+- `node_modules/@pseudo-agi/` 下五个层包齐全，`bundle/cordis.patch.yml`、各包 `lib/index.js`、`panel/client.js` 均在位；
+- patch 引用的五个插件名（memory/tools/scaffold/governance/panel）**全部可解析**。
+
+**关键约束**（已写进 `docs/install.md` §2）：`^0.1.0` 无法从公共 registry 解析，必须用 `pnpm.overrides` 落回本地 tarball；并且要用 `.npmrc` 关掉 peer 自动安装——`@deepseek-ai/*` 由宿主运行时提供，不在 registry 上。

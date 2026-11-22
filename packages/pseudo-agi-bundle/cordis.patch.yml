@@ -1,18 +1,28 @@
 # Layer order matters:
-#   memory   → provides storage, recall tools, and the per-step injection
-#   tools    → provides the controlled hands (guard + approval)
-#   controller → reads the tool surface, injects one directive per step
+#   memory     → storage, recall tools, per-step injection block
+#   tools      → controlled hands (guard + approval + policy check)
+#   scaffold   → injects one discipline line per turn; never routes, never picks tools
 #   governance → observes everything, injects nothing
+#   panel      → read-only sidebar view; no model surface at all
 #
 # Each row is an independent patch line: disable one layer by deleting its row
 # (or setting `disabled: true`) without touching the others. `config` is applied
 # as a whole — the loader does not deep-merge with a later profile layer, so a
 # profile that re-declares a row must restate every field it wants.
+#
+# ── WARNING ──────────────────────────────────────────────────────────────────
+# Every `workspaceRoot: .` below is resolved against the HOST PROCESS cwd, which
+# is usually not your project directory and may not even be writable. Override
+# each one with an absolute path in your profile's cordis.patch.yml. This defect
+# has shipped twice in this project (memory, then governance); see
+# docs/spec-compliance.md §3.
+# ─────────────────────────────────────────────────────────────────────────────
 
 - insert:
     - id: pseudo-agi-memory
       name: '@pseudo-agi/memory'
       config:
+        workspaceRoot: .
         root: .pseudo-agi/memory
         maxInjectTokens: 900
         minCoverage: 0.34
@@ -29,22 +39,30 @@
           - .pseudo-agi/memory
         writeRoots:
           - .
-        writeRequiresApproval: true
+        # The consciousness is the model: writes do not ask a human. The boundary
+        # is the guard plus the host's own file policy (read-only refuses here).
+        writeRequiresApproval: false
         maxWriteBytes: 262144
 
-    - id: pseudo-agi-controller
-      name: '@pseudo-agi/controller'
+    # Formerly `@pseudo-agi/controller`. The keyword router is gone: "what to do
+    # next" is the model's call, so this layer only injects discipline.
+    - id: pseudo-agi-scaffold
+      name: '@pseudo-agi/scaffold'
       config:
         enabled: true
-        injectPerTurn: 2
-        minPromptChars: 8
+        injectPerTurn: 1
         requireEvidence: true
-        reflectOnEmptyRecall: false
 
     - id: pseudo-agi-governance
       name: '@pseudo-agi/governance'
       config:
+        workspaceRoot: .
         root: .pseudo-agi/governance
         journal: true
-        maxSessions: 256
-        maxRecentLines: 50
+        maxSessions: 64
+        maxRecentLines: 40
+
+    - id: pseudo-agi-panel
+      name: '@pseudo-agi/panel'
+      config:
+        workspaceRoot: .

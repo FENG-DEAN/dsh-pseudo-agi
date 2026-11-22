@@ -23,6 +23,7 @@
   "dependencies": {
     "@pseudo-agi/governance": "workspace:^0.1.0",
     "@pseudo-agi/memory": "workspace:^0.1.0",
+    "@pseudo-agi/panel": "workspace:^0.1.0",
     "@pseudo-agi/scaffold": "workspace:^0.1.0",
     "@pseudo-agi/tools": "workspace:^0.1.0"
   }
