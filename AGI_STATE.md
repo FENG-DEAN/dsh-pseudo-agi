@@ -55,3 +55,10 @@
 - `controlled_write({ path: "../escape.md" })` → `Error: 路径越界："../escape.md" 不在工作区 D:\Doc\AIDoc\Dsh_dev\dsh_agi_dev 内`。
 - 结论：审批已退出管线（`writeRequiresApproval: false`），拦截来自 `guard`；**无感写入与强制边界可以同时成立**。
 - 下一步 1 完成，代办列表前进到"每轮收工 commit"。
+
+## 启动协议（每轮固定动作）
+
+1. **开工**：`kb_read({ path: "AGI_STATE.md" })` 读本文件的目标 / 下一步 / 阻塞；再用 `memory_recall` 取相关事实记忆（procedural 层已存这条协议，冷启动会自动带出来）。
+2. **干活**：检索用 `kb_search`（结果必须带 `path:line`，没有就回答"没找到"）；写入用 `controlled_write`（无感，`guard` 兜底路径边界）。
+3. **收工**：追加"验证记录"，改写"下一步"，然后 `git add -A && git commit`。
+4. **不做**：不用关键词控制器替我决定路由；不把未确认的推断写进 `semantic` 层（先 `memory_candidate`，想清楚再 `memory_commit`）。
