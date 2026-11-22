@@ -427,6 +427,56 @@ try {
     })
     assert.equal(record.supersedes.length, 1)
   })
+
+  console.log('\n[10] 冲突检测（只报告，不隐藏）')
+
+  const conflictStore = new MemoryStore(join(workspace, '.pseudo-agi', 'memory-conflict'))
+
+  await check('同标签且标题重叠的两条被标为疑似冲突', async () => {
+    await conflictStore.writeRecord({
+      layer: 'semantic',
+      title: '面板路由无鉴权',
+      body: '面板接口无凭据即返回 200。',
+      evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
+      confidence: 0.8,
+      tags: ['panel'],
+    })
+    await conflictStore.writeRecord({
+      layer: 'semantic',
+      title: '面板路由已鉴权',
+      body: '面板接口校验签名 cookie，无 cookie 返回 401。',
+      evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
+      confidence: 0.95,
+      tags: ['panel'],
+    })
+    const result = await conflictStore.recall('面板路由', { limit: 5, minScore: 1, minCoverage: 0.1 })
+    assert.equal(result.hits.length, 2, 'both records must still be returned')
+    assert.equal(result.conflicts.length, 1)
+    assert.ok(result.conflicts[0].sharedTags.includes('panel'))
+  })
+
+  await check('标签不相交时不报冲突', async () => {
+    const other = new MemoryStore(join(workspace, '.pseudo-agi', 'memory-conflict-2'))
+    await other.writeRecord({
+      layer: 'semantic',
+      title: '面板路由无鉴权',
+      body: '面板接口无凭据即返回 200。',
+      evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
+      confidence: 0.8,
+      tags: ['panel'],
+    })
+    await other.writeRecord({
+      layer: 'semantic',
+      title: '面板路由已鉴权',
+      body: '面板接口校验签名 cookie。',
+      evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
+      confidence: 0.9,
+      tags: ['auth'],
+    })
+    const result = await other.recall('面板路由', { limit: 5, minScore: 1, minCoverage: 0.1 })
+    assert.equal(result.hits.length, 2)
+    assert.equal(result.conflicts.length, 0)
+  })
 } finally {
   await rm(workspace, { recursive: true, force: true })
 }

@@ -45,10 +45,16 @@ function renderRecall(value: {
   readonly considered: number
   readonly note?: string
   readonly hits: readonly {
+    readonly id: string
     readonly title: string
     readonly layer: string
     readonly score: number
     readonly excerpt: string
+  }[]
+  readonly conflicts?: readonly {
+    readonly a: string
+    readonly b: string
+    readonly sharedTags: readonly string[]
   }[]
 }): string {
   if (!value.found) {
@@ -56,7 +62,14 @@ function renderRecall(value: {
   }
   const lines = value.hits.map((hit, index) =>
     `${index + 1}. [${hit.layer}] ${hit.title}（score ${hit.score.toFixed(2)}）\n   ${hit.excerpt}`)
-  return `找到 ${value.hits.length} 条记忆，扫描 ${value.considered} 条：\n${lines.join('\n')}`
+  const conflicts = value.conflicts ?? []
+  const warning = conflicts.length === 0
+    ? ''
+    : `\n\n⚠ 疑似冲突 ${conflicts.length} 对（同标签且标题重叠，两条都还没被取代）：\n`
+      + conflicts.map(pair =>
+        `  - ${pair.a} ↔ ${pair.b}（共享标签：${pair.sharedTags.join(', ')}）`).join('\n')
+      + '\n  请自行判断哪条仍然成立；若新的取代旧的，用 memory_candidate 的 supersedes 声明。'
+  return `找到 ${value.hits.length} 条记忆，扫描 ${value.considered} 条：\n${lines.join('\n')}${warning}`
 }
 
 /**
@@ -120,6 +133,19 @@ export function registerMemoryTools(ctx: Context, deps: MemoryToolDeps): void {
               },
             },
           },
+          conflicts: {
+            type: 'array',
+            description: 'Recalled pairs that plausibly contradict each other (shared tags + overlapping titles). Reported, never resolved: judge them yourself and declare supersedes when the newer one replaces the older.',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                a: { type: 'string', required: true },
+                b: { type: 'string', required: true },
+                sharedTags: { type: 'array', required: true, items: { type: 'string' } },
+              },
+            },
+          },
         },
       },
       render: (_args, value) => [{ type: 'text', text: renderRecall(value) }],
@@ -159,6 +185,11 @@ export function registerMemoryTools(ctx: Context, deps: MemoryToolDeps): void {
             evidence: [...hit.record.evidence],
           }))
           : [],
+        conflicts: result.conflicts.map(pair => ({
+          a: pair.a,
+          b: pair.b,
+          sharedTags: [...pair.sharedTags],
+        })),
         ...(found ? {} : {
           note: '证据不足：只能回答“没找到”，不要用训练知识补全，也不要据此假设事实存在。',
         }),

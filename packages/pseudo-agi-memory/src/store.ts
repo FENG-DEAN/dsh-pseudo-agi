@@ -80,6 +80,19 @@ export interface RecallResult {
   readonly hits: readonly RecallHit[]
   readonly considered: number
   readonly terms: readonly string[]
+  /**
+   * Pairs among the returned hits that look like they may contradict each
+   * other: same tags, overlapping titles, both still live. Reported, never
+   * resolved — which of the two is right is a judgement only the reader can make.
+   */
+  readonly conflicts: readonly RecallConflict[]
+}
+
+/** Two recalled records that plausibly say different things about one topic. */
+export interface RecallConflict {
+  readonly a: string
+  readonly b: string
+  readonly sharedTags: readonly string[]
 }
 
 /** Recall tuning, supplied by the plugin config. */
@@ -492,9 +505,9 @@ export class MemoryStore {
    */
   async recall(query: string, options: RecallOptions, layers: readonly MemoryLayer[] = MEMORY_LAYERS): Promise<RecallResult> {
     const terms = [...new Set(tokenize(query))]
-    if (terms.length === 0) return { hits: [], considered: 0, terms: [] }
+    if (terms.length === 0) return { hits: [], considered: 0, terms: [], conflicts: [] }
     const { records } = await this.scan(layers)
-    if (records.length === 0) return { hits: [], considered: 0, terms }
+    if (records.length === 0) return { hits: [], considered: 0, terms, conflicts: [] }
 
     const profiles = records.map(record => ({
       record,
@@ -535,7 +548,8 @@ export class MemoryStore {
 
     hits.sort((left, right) => right.score - left.score
       || right.record.updatedAt.localeCompare(left.record.updatedAt))
-    return { hits: hits.slice(0, options.limit), considered: records.length, terms }
+    const top = hits.slice(0, options.limit)
+    return { hits: top, considered: records.length, terms, conflicts: conflictsOf(top) }
   }
 
   private async atomicWrite(path: string, contents: string): Promise<void> {
@@ -543,6 +557,36 @@ export class MemoryStore {
     await writeFile(temporary, contents, 'utf8')
     await rename(temporary, path)
   }
+}
+
+/**
+ * Find the recalled pairs that plausibly disagree.
+ *
+ * The test is deliberately shallow and explainable: two hits sharing at least
+ * one tag AND overlapping by two or more title words are reported as a pair
+ * worth a second look. It never hides or reorders anything — deciding which of
+ * the two is right belongs to the reader, not to the store.
+ *
+ * @param hits - the records being returned, in ranked order.
+ * @returns the suspicious pairs, as ids plus the tags they share.
+ */
+function conflictsOf(hits: readonly RecallHit[]): RecallConflict[] {
+  const wordsOf = (text: string) => new Set(tokenize(text).filter(term => term.length >= 2))
+  const conflicts: RecallConflict[] = []
+  for (let left = 0; left < hits.length; left++) {
+    for (let right = left + 1; right < hits.length; right++) {
+      const a = hits[left]?.record
+      const b = hits[right]?.record
+      if (a === undefined || b === undefined) continue
+      const sharedTags = a.tags.filter(tag => b.tags.includes(tag))
+      if (sharedTags.length === 0) continue
+      const bWords = wordsOf(b.title)
+      const overlap = [...wordsOf(a.title)].filter(word => bWords.has(word))
+      if (overlap.length < 2) continue
+      conflicts.push({ a: a.id, b: b.id, sharedTags })
+    }
+  }
+  return conflicts
 }
 
 /** Bound one excerpt around the first term occurrence. */

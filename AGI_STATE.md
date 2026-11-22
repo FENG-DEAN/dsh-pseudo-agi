@@ -34,7 +34,7 @@
 ## 下一步（按优先级）
 
 1. **跨会话连续性**：下次冷启动只靠本文件 + procedural 记忆能否恢复状态——已部分验证三次。
-2. **记忆的自动裁决**（大，未做）：显式 `supersedes` 已实现；时间序裁决与置信度衰减仍未做——两条同等置信的记录并存时仍靠模型自己分辨。
+2. **记忆裁决仍不做**（检测已做）：`memory_recall` 会报出疑似冲突对（共享标签 + 标题重叠），但不会替你选；时间序/置信度衰减未做。是否该做自动裁决是开放问题——做错了会静默藏掉正确的那条。
 3. **真机确认本轮两处改动**：面板标注已取代记忆（`index.js` 需重启、`client.js` 需刷新）与 bundle 分发修复（不影响运行中的 profile，下次安装时生效）。
 
 已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到；面板路由鉴权已实现（`pseudo-agi-panel` 验 Host Connection 的签名 cookie），且**用户确认浏览器面板在鉴权后仍能正常刷出数据**；`controlled_write` 已**真机双向验证**遵守 `sandboxPolicy`（`read-only` 拒绝、`danger-full-access` 放行）；文档补全（`spec-compliance` §3/§4/§5/§6 + `architecture` §1/§3/§7，`kb_search("sidebar.panellist")` 从 0 命中变为 3 行）；记忆冲突消解（`memory_candidate` 支持 `supersedes`，提交时写 `supersededBy` 并默认过滤，smoke 35/35）；面板标注已取代记忆（`supersededBy` 透传 + 删除线/降透明度 + 中英文案）；bundle 分发修复并验证（`controller`→`scaffold`、补 `panel`、审批默认值修正、pack+`file:`+`overrides` 全链路跑通）。
@@ -214,3 +214,11 @@
 - patch 引用的五个插件名（memory/tools/scaffold/governance/panel）**全部可解析**。
 
 **关键约束**（已写进 `docs/install.md` §2）：`^0.1.0` 无法从公共 registry 解析，必须用 `pnpm.overrides` 落回本地 tarball；并且要用 `.npmrc` 关掉 peer 自动安装——`@deepseek-ai/*` 由宿主运行时提供，不在 registry 上。
+
+### 2026-11-22 · 记忆冲突检测（报不裁决）
+
+- **做的是什么**：`memory_recall` 的返回新增 `conflicts`——对命中记录两两比对，**共享至少一个 tag 且标题重叠 ≥2 个词**即报出这对 id 与共享标签。`renderRecall` 会附一段 ⚠ 提示，并告诉模型可以用 `supersedes` 修正。
+- **刻意不做的是什么**：不隐藏、不过滤、不重排。理由是"哪条仍然成立"只有读者能判断；自动挑一条会在"两边都错"时错得更隐蔽。
+- **实现**：`store.ts` 新增 `RecallConflict` 类型与 `conflictsOf(hits)`；`recall` 的三条返回路径（空查询、空库、正常）都带 `conflicts`；`tools.ts` 的 output schema 与 `renderRecall` 同步。
+- **测试**：smoke 35 → **37/37**，新增正例（同标签 + 标题重叠 → 1 对冲突）与反例（标签不相交 → 0 对）。
+- **未验证**：真机 `memory_recall` 的输出——memory 包的 `lib` 已编译，但宿主进程仍加载旧模块，要重启才看得到 `conflicts` 字段。
