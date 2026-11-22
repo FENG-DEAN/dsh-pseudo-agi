@@ -69,14 +69,16 @@
 - 这套判定是**启发式，会误报**，实测记录如下：初版「共享 ≥1 标签」把两条只同带 `真机` 标签的不同事件报成冲突；放宽到「≥2 标签」后，又把一条设计原则与触发它的事件报成冲突（两者跨层，本不可能互相矛盾），因此加上「同层」约束。收紧后真实库里 5 组查询只剩 1 对误报（两个不同阶段的验收记录）。**不再继续收紧**：再严就会连真冲突一起漏掉，而误报的代价只是多看一眼。
 - 仍未做：时间序自动裁决、置信度衰减。没有声明取代关系的两条记录会一起被召回，检测只是把它们并排放到眼前。
 - 治理层的 JSONL 是追加写，没有轮转；长期运行需要外部清理。
+- **知识库可以移出工作区**（`store.json` 指针 + `kb_store relocate`），因此"都文件在工作区内"这条旧假设不再成立：判定读权限的是「工作区或某个已声明知识根」，判定写权限的是 `writeRoots`。能读到搬出去的库，不等于能往里写。
+- 位置变更在**插件加载时**生效：`relocate` 之后不重启，四层仍在旧根上读写（`kb_store status` 立刻能看到指针，但 `memory`/`governance` 不会）。这是有意的——不让一次调用中途改变正在使用的存储根。
 
 
 ## 6. 围栏 + 统一策略，但都不是内核沙箱
 
 本工程的写工具做两层检查：
 
-- **自有围栏**：只写 UTF-8 文本，拒绝 `.exe/.dll/.bat/.ps1` 等扩展名，限制单次字节数；拒绝 `.git`、`node_modules`、`.ssh`、`.env` 等路径段；落在 `writeRoots` 之外一律拒绝，`resolveInside` 用 `path.relative` 判定（Windows/macOS 大小写不敏感）。
-- **DSH 统一文件策略**：`controlled_write` 经 `ctx.inject(['sandboxPolicy'])` 取得策略服务，用 `resolve({ session: exec.agent.session })` 解析当前会话模式，`read-only` 直接拒绝。**注意 `exec.agent` 是 `Agent` 不是 `Session`**，会话要从 `agent.session` 取——传错对象会让 resolver 抛异常，若被兜底 `catch` 吞掉，症状会伪装成"没有策略可用"。
+- **自有围栏**：只写 UTF-8 文本，拒绝 `.exe/.dll/.bat/.ps1` 等扩展名，限制单次字节数；拒绝 `.git`、`node_modules`、`.ssh`、`.env` 等路径段；落在 `writeRoots` 之外一律拒绝（默认就是工作区根，写绝对路径才能把搬出去的知识库也设为可写），包含判定统一走 `path.relative`（Windows/macOS 大小写不敏感）。
+- **DSH 统一文件策略**：`controlled_write` 与 `kb_store` 都经 `ctx.inject(['sandboxPolicy'])` 取得策略服务，用 `resolve({ session: exec.agent.session })` 解析当前会话模式，`read-only` 直接拒绝。**注意 `exec.agent` 是 `Agent` 不是 `Session`**，会话要从 `agent.session` 取——传错对象会让 resolver 抛异常，若被兜底 `catch` 吞掉，症状会伪装成"没有策略可用"。
 
 这样一来，它与 DSH 自带的 `write`/`edit`（走 `ctx.fs`）和 `pwsh`（走 `ctx.shell`）共用一个策略归属，不再是绕过策略的后门。
 
@@ -89,6 +91,8 @@
 | 错误记忆被每轮重复注入 | 候选 → 证据校验 → 提交三阶段；置信度下限；`working.md` 可见 | 证据本身可能是错的（引用了一个错误文件）；需要人工抽查 |
 | 模型用训练知识补全"没找到" | 召回/检索返回 `found: false` + 明确 note；脚手架注入"不得补全"；注入块首句写明"证据不足必须声明" | 模型仍可能违反指令，只能靠治理指标发现（记忆命中率/工具失败率） |
 | 写操作越权 | `writeRoots` + denied 段/扩展名 + 同步 guard + 审批 + 工具体复核 | 审批被点"同意"时仍会写；用户是最后一环 |
+| 用 `kb_store` 把知识库搬到任意位置 | `status` 之外的 action 受会话文件策略约束（`read-only` 拒绝、`workspace-write` 禁止搬出工作区）；目标不能包含/被包含于当前库；目标非空需显式 `overwrite`；复制先校验再写指针 | `danger-full-access` 下可搬到任意可写目录（这是该策略的定义） |
+| 指针文件被改坏导致读错目录 | 损坏/缺字段时回退配置默认位置并给 `warning`，绝不因为一个坏 JSON 让插件加载失败 | 回退到旧根后可能读到过期数据，直到有人看 `kb_store status` |
 | 审批被 guard 翻案 | guard 是单调否决，审批只作用于"这一次调用" | 无 |
 | 工具卸载后残留能力 | 工具、guard、监听全部随 Fiber 回收 | 已写出的文件不回收（本来就是产物） |
 | 审计日志泄密 | 只记工具名/调用 id/是否失败，不记参数与内容 | 记忆事件记录了 query 前 200 字符，可能含敏感信息；需要时把 `journal` 关掉 |

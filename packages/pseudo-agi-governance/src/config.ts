@@ -14,7 +14,17 @@ export interface GovernanceConfig {
    * read-only), so a real deployment must set this explicitly.
    */
   readonly workspaceRoot: string
-  /** Directory receiving one JSONL file per session, relative to `workspaceRoot`. */
+  /**
+   * Default knowledge-base root, relative to the workspace root or absolute.
+   * A pointer file at `<workspaceRoot>/.pseudo-agi/store.json` overrides it, so
+   * relocating the knowledge base does not require editing every layer.
+   */
+  readonly storeRoot: string
+  /**
+   * Directory receiving one JSONL file per session. A path starting with
+   * `.pseudo-agi` is resolved against the live store root; anything else
+   * resolves against `workspaceRoot` as before.
+   */
   readonly root: string
   /** Maximum sessions kept in the in-memory metric book. */
   readonly maxSessions: number
@@ -27,6 +37,7 @@ export interface GovernanceConfig {
 /** Schemastery schema; invalid config fails at load time. */
 export const Config: z<GovernanceConfig> = z.object({
   workspaceRoot: z.string().default('.'),
+  storeRoot: z.string().default('.pseudo-agi'),
   root: z.string().default('.pseudo-agi/governance'),
   maxSessions: z.number().default(256),
   maxRecentLines: z.number().default(50),
@@ -42,6 +53,7 @@ export function validateConfig(config: GovernanceConfig): void {
     throw new Error(`pseudo-agi-governance: ${message}`)
   }
   if (config.workspaceRoot.trim().length === 0) fail('config.workspaceRoot must not be empty')
+  if (config.storeRoot.trim().length === 0) fail('config.storeRoot must not be empty')
   if (config.root.trim().length === 0) fail('config.root must not be empty')
   for (const [name, value] of [
     ['maxSessions', config.maxSessions],

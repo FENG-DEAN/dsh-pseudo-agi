@@ -25,6 +25,7 @@ import { isAbsolute, resolve } from 'node:path'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
+import { resolveStore, storePath } from '@pseudo-agi/store'
 
 import { Config, validateConfig } from './config.js'
 import type { MemoryConfig } from './config.js'
@@ -66,17 +67,20 @@ const MEMORY_CONTEXT_ORDER = 400
  */
 export function apply(ctx: Context, config: MemoryConfig): void {
   validateConfig(config)
+  const report = (message: string): void => {
+    ctx.logger.warn(`pseudo-agi-memory: ${message}`)
+  }
   // Every relative path in this plugin — the memory tree and `file` evidence
   // refs — resolves against the configured workspace root, never against the
   // process cwd, because an agent session's cwd can differ from the host's.
   const workspaceRoot = resolve(config.workspaceRoot)
-  const store = new MemoryStore(resolve(workspaceRoot, config.root))
+  // The knowledge base may live outside the workspace (another disk, a synced
+  // folder). One pointer file decides; see `@pseudo-agi/store`.
+  const location = resolveStore({ workspaceRoot, storeRoot: config.storeRoot })
+  if (location.warning !== undefined) report(`store pointer ignored: ${location.warning}`)
+  const store = new MemoryStore(storePath(location, config.root))
   // Keyed by the live Agent object, so disposal of an agent drops its block.
   const injected = new WeakMap<object, string>()
-
-  const report = (message: string): void => {
-    ctx.logger.warn(`pseudo-agi-memory: ${message}`)
-  }
 
   /**
    * Recompute this step's injected block. Runs inside `agent/pre-step`, which

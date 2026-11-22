@@ -11,7 +11,7 @@
  */
 
 import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, relative, resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import type { MemoryStore } from './store.js'
 
 /**
@@ -58,7 +58,7 @@ export async function refreshWorkingDigest(store: MemoryStore, previousKey?: str
     '# 工作记忆摘要（自动生成，请勿手改）',
     '',
     `生成时间：${new Date().toISOString()}`,
-    `存储根目录：${relative(process.cwd(), store.root) || store.root}`,
+    `存储根目录：${store.root}`,
     '',
     '## 分层计数',
     ...(layerLines.length > 0 ? layerLines : ['- (empty)']),

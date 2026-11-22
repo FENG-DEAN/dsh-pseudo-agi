@@ -2,7 +2,7 @@
 
 > 由模型（意识）在开工/收工时维护：这是"我正在做什么"，不是事实记忆。
 > 事实记忆在 `.pseudo-agi/memory/`，用 `memory_recall` 取；工具轨迹在 `.pseudo-agi/governance/*.jsonl`。
-> 最近更新：2026-11-22（controlled_write 真机双向验证通过）
+> 最近更新：2026-11-23（新增知识库换位置存储：`kb_store` + 指针文件）
 
 ## 当前目标
 
@@ -27,15 +27,16 @@
 | 治理 | `@pseudo-agi/governance` | ✅ `governance_report` 可用；JSONL 已出现 `step`/`scaffold`/`tool`/`turn` 行 |
 | 面板 | `@pseudo-agi/panel` | ✅ 侧栏「鲸鱼娘 AGI」入口真机出现（用户确认）；`GET /pseudo-agi/api/state` 200 |
 
-伪AGI 自有工具共 8 个：`memory_recall`、`memory_candidate`、`memory_commit`、`memory_forget`、`kb_search`、`kb_read`、`controlled_write`、`governance_report`。
+伪AGI 自有工具共 9 个：`memory_recall`、`memory_candidate`、`memory_commit`、`memory_forget`、`kb_search`、`kb_read`、`controlled_write`、`kb_store`、`governance_report`。
 
 > 口径提醒：面板返回的 `toolCount`（真机 15）取的是**宿主全部**工具注册表 `ctx.get('tools').definitions().length`，不是上面这 8 个。两个数字都对，别拿它们互相校验。
 
 ## 下一步（按优先级）
 
 1. **跨会话连续性**：下次冷启动只靠本文件 + procedural 记忆能否恢复状态——已部分验证三次。
-2. **记忆裁决仍不做**（检测已做）：`memory_recall` 会报出疑似冲突对（共享标签 + 标题重叠），但不会替你选；时间序/置信度衰减未做。是否该做自动裁决是开放问题——做错了会静默藏掉正确的那条。
-3. **真机确认本轮两处改动**：面板标注已取代记忆（`index.js` 需重启、`client.js` 需刷新）与 bundle 分发修复（不影响运行中的 profile，下次安装时生效）。
+2. **知识库换位置真机验收（需先重装 bundle）**：`kb_store status` → `relocate` 到另一块盘 → 重启 → 面板「知识库位置」显示新根且 `source: pointer`；再 `rollback` 回到默认位置。本地四套测试已覆盖，真机未验证（profile 现在是卸载状态，重装才有插件可验）。
+3. **记忆裁决仍不做**（检测已做）：`memory_recall` 会报出疑似冲突对（共享标签 + 标题重叠），但不会替你选；时间序/置信度衰减未做。是否该做自动裁决是开放问题——做错了会静默藏掉正确的那条。
+4. **真机确认面板标注已取代记忆**（`index.js` 需重启、`client.js` 需刷新）；顺带确认新增的「知识库位置」行。
 
 已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到；面板路由鉴权已实现（`pseudo-agi-panel` 验 Host Connection 的签名 cookie），且**用户确认浏览器面板在鉴权后仍能正常刷出数据**；`controlled_write` 已**真机双向验证**遵守 `sandboxPolicy`（`read-only` 拒绝、`danger-full-access` 放行）；文档补全（`spec-compliance` §3/§4/§5/§6 + `architecture` §1/§3/§7，`kb_search("sidebar.panellist")` 从 0 命中变为 3 行）；记忆冲突消解（`memory_candidate` 支持 `supersedes`，提交时写 `supersededBy` 并默认过滤，smoke 35/35）；面板标注已取代记忆（`supersededBy` 透传 + 删除线/降透明度 + 中英文案）；bundle 分发修复并验证（`controller`→`scaffold`、补 `panel`、审批默认值修正、pack+`file:`+`overrides` 全链路跑通）。
 
@@ -47,10 +48,11 @@
 
 ## 运行环境
 
-- profile：`C:\Users\FDA\.dsh\profiles\desktop`（四层全挂，`link:` 到本工程）
+- profile：`C:\Users\FDA\.dsh\profiles\desktop`（**鲸鱼娘 AGI 已于 2026-11-22 卸载**；工程与数据保留在本目录，重装方式见 profile 的 `cordis.patch.yml` 注释）
 - 工程：`D:\Doc\AIDoc\Dsh_dev\dsh_agi_dev`
 - 记忆根：`.pseudo-agi/memory`（git 跟踪；`working.md`、`candidates/`、`governance/` 不入库）
 - 知识根：`docs/` + `.pseudo-agi/memory/`
+- **知识库位置**：默认 `.pseudo-agi`，由 `.pseudo-agi/store.json` 指针决定；当前无指针文件，即默认位置。`kb_store({action:"status"})` 可随时查
 - 审批策略：会话级 `never`；写工具已不 `ask`，因此不受其影响
 
 ## 启动协议（每轮固定动作）
@@ -233,3 +235,25 @@
 - **测试**：smoke 37 → **38/38**，新增跨层反例。
 - **第一次真正使用 `supersedes`**：旧记忆 `mem-20261122-233729cd`（写着"共享 ≥1 标签"，已过时）被 `mem-20261122-a327cbb2` 取代，旧文件 front-matter 中写入 `supersededBy`，文件完整保留。真实库验证：默认 `scan` 18 条、`includeSuperseded` 19 条、旧记录对召回不可见。面板刷新后应看到该行变灰带删除线。
 - **重启后复验（同日）**：同一查询 `panel 鉴权 路由` 从「6 命中 / 2 对误报」变为「6 命中 / **0 对冲突**」；扫描数由 19 降为 **18**，被取代的 `233729cd` 已不在召回范围，新记忆 `a327cbb2` 出现在第 6 位。两项机制（阈值收紧、supersedes 过滤）均真机成立。
+
+### 2026-11-23 · 新增「知识库换位置存储」（`kb_store` + 指针文件）
+
+**盘点**：位置原先分散在四处且不对齐——memory 的 `root`、tools 的 `knowledgeRoots` / `writeRoots`、governance 的 `root`、panel 里硬编码的 `.pseudo-agi/...`；`kb_read` / `kb_search` / `controlled_write` 又都过 `resolveInside`，把"知识库必须在工作区内"写死。要换位置只能改四行配置，而配置漂移正是本工程已犯过两次的缺陷。
+
+**设计**：位置放进**数据**，不放进四个配置——
+
+- 指针文件 `<workspaceRoot>/.pseudo-agi/store.json`，优先级 **指针 → 配置 `storeRoot` → 默认 `.pseudo-agi`**；指针放在固定工作区路径上，所以它不会跟着被搬走的树跑掉。
+- 新纯库 `@pseudo-agi/store`（无构建步骤、无 cordis 依赖）承载解析 / 统计 / 迁移 / 回滚，四层共用一份实现。
+- 以 `.pseudo-agi` 开头的 `root` / `knowledgeRoots` 条目按**活动根**解析，旧配置不改也能跟随搬家；绝对路径原样保留，作为显式位置的逃生口。
+
+**新工具 `kb_store`**：`status`（根、来源、各子树文件与字节）／`relocate`（复制 → 校验文件数+字节 → **最后**写指针；源默认保留，`move: true` 才删）／`rollback`（只改指针，不动数据）。它受会话文件策略约束：`read-only` 拒绝搬动动作、`workspace-write` 禁止搬出工作区、`status` 任何策略下放行。
+
+**放宽的边界与没放宽的边界**：`kb_search` / `kb_read` 允许落在工作区外的**已声明知识根**（搬出去仍可读）；`controlled_write` 仍要求 `writeRoots` 显式包含新位置——读得到不等于写得进。
+
+**面板**：`/state` 新增 `store { root, source, pointerPath, fallback, warning }`，顶部显示「知识库位置」。面板每次请求都读文件，但**位置**在 `apply` 时解析，所以改指针后要重启。
+
+**测试**：`store-test` **23/23**（新）、`smoke` **41/41**（+3 条 `kb_store` 策略）、`load-test` **26/26**（+8 条：工具数 8→9、`status`/`relocate`/`rollback` 端到端）、`panel-test` **16/16**（+2 条：跟随指针、坏指针回退）。
+
+**分发**：七个 tarball 全部 pack 成功，临时目录 `pnpm install` 退出码 0，patch 里五个插件名逐个 `import()` 通过。⚠️ 同时发现 **pnpm 11 不再读 `package.json` 的 `pnpm` 字段**——`overrides` 必须写进 `pnpm-workspace.yaml`，且六个包都要作为 profile 的**直接依赖**（严格布局不会把嵌套依赖提升到根）。旧文档写法在 pnpm 11 下会退回 registry 报 `ERR_PNPM_FETCH_404`，已更正 `docs/install.md` §2。
+
+**未真机验证**：bundle 目前在 profile 里是卸载状态，本轮只到本地测试与分发验证；真机验收见「下一步 2」。

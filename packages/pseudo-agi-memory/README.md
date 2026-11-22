@@ -29,7 +29,8 @@
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `workspaceRoot` | `.` | 解析 `root` 与 `file` 证据的基准。**必须显式配绝对路径**——宿主 cwd 通常不是工程目录 |
-| `root` | `.pseudo-agi/memory` | 记忆根（相对 `workspaceRoot`） |
+| `storeRoot` | `.pseudo-agi` | 知识库默认根。被 `<workspaceRoot>/.pseudo-agi/store.json` 指针覆盖，见 [@pseudo-agi/store](../pseudo-agi-store/README.md) |
+| `root` | `.pseudo-agi/memory` | 记忆根。以 `.pseudo-agi` 开头时按**活动根**解析，因此换位置不用改这一行 |
 | `recallLayers` | 四层全部 | `memory_recall` 默认搜索的层 |
 | `injectLayers` | episodic/semantic/procedural | 每步注入的层 |
 | `maxInjectTokens` | `900` | 注入预算；中文按 1 token/字估算，建议留 20% 余量 |

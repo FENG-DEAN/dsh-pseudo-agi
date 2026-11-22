@@ -22,6 +22,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 // Type-only: event vocabulary published by the other layers.
 import type {} from '@pseudo-agi/memory/events'
 import type {} from '@pseudo-agi/scaffold/events'
+import { resolveStore, storePath } from '@pseudo-agi/store'
 
 import { Config, validateConfig } from './config.js'
 import type { GovernanceConfig } from './config.js'
@@ -48,7 +49,14 @@ export function apply(ctx: Context, config: GovernanceConfig): void {
   const book = new MetricsBook(config.maxSessions)
   // Resolve against the configured workspace, never against the host cwd: the
   // host usually runs from its install directory, which may be read-only.
-  const journalRoot = resolve(resolve(config.workspaceRoot), config.root)
+  const workspaceRoot = resolve(config.workspaceRoot)
+  // The journal lives inside the knowledge base, so it follows the same pointer
+  // file as memory; otherwise a relocation would silently split the audit trail.
+  const location = resolveStore({ workspaceRoot, storeRoot: config.storeRoot })
+  if (location.warning !== undefined) {
+    ctx.logger.warn(`pseudo-agi-governance: store pointer ignored: ${location.warning}`)
+  }
+  const journalRoot = storePath(location, config.root)
   const journal = new JsonlJournal(journalRoot, message => {
     ctx.logger.warn(`pseudo-agi-governance: ${message}`)
   })

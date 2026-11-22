@@ -308,6 +308,26 @@ try {
     assert.equal(guard({ name: 'kb_read', arguments: { path: 'docs/ok.md' }, agent: undefined }), undefined)
   })
 
+  const storeCall = arguments_ => ({ name: 'kb_store', arguments: arguments_, agent: undefined })
+
+  await check('read-only 拒绝搬动知识库，但放行只读的 status', () => {
+    const guard = createWriteGuard(toolsConfig, workspace, () => 'read-only')
+    assert.match(guard(storeCall({ action: 'relocate', to: 'D:/outside-kb' })) ?? '', /read-only/)
+    assert.match(guard(storeCall({ action: 'rollback' })) ?? '', /read-only/)
+    assert.equal(guard(storeCall({ action: 'status' })), undefined)
+  })
+
+  await check('workspace-write 下不能把知识库搬到工作区外', () => {
+    const guard = createWriteGuard(toolsConfig, workspace, () => 'workspace-write')
+    assert.match(guard(storeCall({ action: 'relocate', to: 'D:/outside-kb' })) ?? '', /工作区外/)
+    assert.equal(guard(storeCall({ action: 'relocate', to: 'kb-inside' })), undefined)
+  })
+
+  await check('danger-full-access 下允许搬到工作区外', () => {
+    const guard = createWriteGuard(toolsConfig, workspace, () => 'danger-full-access')
+    assert.equal(guard(storeCall({ action: 'relocate', to: 'D:/outside-kb' })), undefined)
+  })
+
   console.log('\n[7] 治理指标与审计日志')
 
   await check('指标累加与容量淘汰', () => {

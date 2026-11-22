@@ -14,14 +14,21 @@
  */
 
 import type { PreToolDecision, ToolExecution, ToolGuard } from '@deepseek-ai/dsh-tools'
+import { isAbsolute, resolve } from 'node:path'
 import type { ToolsConfig } from './config.js'
-import { denyReason, resolveInside } from './workspace.js'
+import { denyReason, isWithin, resolveInRoots } from './workspace.js'
 
 /** The one write tool this plugin owns. */
 export const WRITE_TOOL = 'controlled_write'
 
+/** The tool that re-points the knowledge base; guarded like a write. */
+export const STORE_TOOL = 'kb_store'
+
+/** Actions `kb_store` accepts; anything else is a malformed call. */
+const STORE_ACTIONS: ReadonlySet<string> = new Set(['status', 'relocate', 'rollback'])
+
 /** Every tool this plugin owns; the guard ignores everything else. */
-export const OWNED_TOOLS: ReadonlySet<string> = new Set(['kb_search', 'kb_read', WRITE_TOOL])
+export const OWNED_TOOLS: ReadonlySet<string> = new Set(['kb_search', 'kb_read', WRITE_TOOL, STORE_TOOL])
 
 /** The shared file-operation modes owned by `ctx.sandboxPolicy`. */
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
@@ -46,14 +53,44 @@ export type SandboxModeOf = (exec: Readonly<ToolExecution>) => SandboxMode | und
  * @param config - deployment configuration.
  * @param root - absolute workspace root.
  * @param modeOf - effective file policy per call; omitted when unmounted.
+ * @param allowedRoots - absolute write roots; defaults to the workspace root.
  * @returns a guard that denies out-of-policy, out-of-root, denied-segment, and denied-extension writes.
  */
 export function createWriteGuard(
   config: ToolsConfig,
   root: string,
   modeOf: SandboxModeOf = () => undefined,
+  allowedRoots: readonly string[] = [root],
 ): ToolGuard {
   return (exec: Readonly<ToolExecution>): string | undefined => {
+    if (exec.name === STORE_TOOL) {
+      // Moving the knowledge base is a write to a location chosen at call time,
+      // so it is checked here rather than by the containment rules below.
+      const storeArgs = exec.arguments as { action?: unknown; to?: unknown } | undefined
+      if (storeArgs === undefined || typeof storeArgs.action !== 'string') {
+        return 'kb_store 缺少字符串 action 参数'
+      }
+      if (!STORE_ACTIONS.has(storeArgs.action)) {
+        return `kb_store 不认识 action "${String(storeArgs.action)}"（只能是 status / relocate / rollback）`
+      }
+      // `status` only reads, so it survives every mode; the two moving actions do not.
+      if (storeArgs.action !== 'status' && modeOf(exec) === 'read-only') {
+        return '当前会话文件策略为 read-only，kb_store 拒绝改动知识库位置。切换策略后重试。'
+      }
+      if (storeArgs.action !== 'relocate') return undefined
+      if (typeof storeArgs.to !== 'string' || storeArgs.to.trim() === '') {
+        return 'kb_store relocate 缺少字符串 to 参数'
+      }
+      // `workspace-write` is the host's promise that writes stay inside the
+      // workspace; relocating outside it would break that promise silently.
+      if (modeOf(exec) === 'workspace-write') {
+        const target = isAbsolute(storeArgs.to) ? resolve(storeArgs.to) : resolve(root, storeArgs.to)
+        if (!isWithin(root, target)) {
+          return '当前会话文件策略为 workspace-write：知识库可以搬到工作区内，但不能搬到工作区外。'
+        }
+      }
+      return undefined
+    }
     if (exec.name !== WRITE_TOOL) return undefined
     if (modeOf(exec) === 'read-only') {
       return '当前会话文件策略为 read-only，controlled_write 拒绝写入。切换策略或在其他模式下重试。'
@@ -64,11 +101,11 @@ export function createWriteGuard(
     }
     let absolute: string
     try {
-      absolute = resolveInside(root, args.path)
+      absolute = resolveInRoots(root, allowedRoots, args.path)
     } catch (error) {
       return error instanceof Error ? error.message : String(error)
     }
-    return denyReason(config, root, absolute)
+    return denyReason(config, root, absolute, allowedRoots)
   }
 }
 

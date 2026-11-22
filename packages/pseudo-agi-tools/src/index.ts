@@ -18,6 +18,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: brings the `ctx.tools` and tool-event declarations into scope.
 import type {} from '@deepseek-ai/dsh-tools'
+import { resolveStore, storePath } from '@pseudo-agi/store'
 
 import { Config, validateConfig } from './config.js'
 import type { ToolsConfig } from './config.js'
@@ -28,7 +29,7 @@ import { workspaceRoot } from './workspace.js'
 
 export { Config }
 export type { ToolsConfig }
-export { WRITE_TOOL } from './policy.js'
+export { WRITE_TOOL, STORE_TOOL } from './policy.js'
 
 /** Plugin name. */
 export const name = 'pseudo-agi-tools'
@@ -54,6 +55,13 @@ interface OptionalInject {
 export function apply(ctx: Context, config: ToolsConfig): void {
   validateConfig(config)
   const root = workspaceRoot(config)
+  // The knowledge base may live outside the workspace. One pointer file decides
+  // where; every root below is mapped through it, so a relocation moves the
+  // readable tree, the write roots, and the defaults together.
+  const store = resolveStore({ workspaceRoot: root, storeRoot: config.storeRoot })
+  if (store.warning !== undefined) ctx.logger.warn(`pseudo-agi-tools: store pointer ignored: ${store.warning}`)
+  const knowledgeRoots = config.knowledgeRoots.map(candidate => storePath(store, candidate))
+  const writeRoots = config.writeRoots.map(candidate => storePath(store, candidate))
 
   /**
    * The shared file policy, when this deployment mounts `sandbox-policy`.
@@ -86,8 +94,9 @@ export function apply(ctx: Context, config: ToolsConfig): void {
   }
 
   // Monotonic veto. Registered once, evaluated for every call, denies only the
-  // one tool this plugin owns.
-  ctx.tools.guard(createWriteGuard(config, root, modeOf))
+  // tools this plugin owns. Write roots are passed so a declared out-of-workspace
+  // root (the relocated knowledge base) is a boundary, not a hole.
+  ctx.tools.guard(createWriteGuard(config, root, modeOf, writeRoots))
 
   // Approval gate. `ask` is a grant request for one call; it never weakens the
   // guard above. Anything not owned by this plugin is delegated untouched.
@@ -98,5 +107,5 @@ export function apply(ctx: Context, config: ToolsConfig): void {
     return decision
   })
 
-  registerControlledTools(ctx, { config, root })
+  registerControlledTools(ctx, { config, root, store, knowledgeRoots, writeRoots })
 }

@@ -11,7 +11,10 @@
 
 import assert from 'node:assert/strict'
 import { createHash, createHmac, randomBytes } from 'node:crypto'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const require = createRequire(new URL('../packages/pseudo-agi-memory/package.json', import.meta.url))
@@ -56,6 +59,10 @@ const fakeWebServer = {
 const app = new Context()
 app.plugin({ name: 'fake-web', apply(ctx) { ctx.provide('webServer', fakeWebServer) } })
 const fork = app.plugin(panel, { workspaceRoot: 'D:/Doc/AIDoc/Dsh_dev/dsh_agi_dev' })
+/** Later apps are declared up front so `finally` can dispose them. */
+let fork2 = null
+let fork3 = null
+let fork4 = null
 
 /** Call the handler and resolve with the response it produces. */
 async function invoke(handler, method, url, headers = {}) {
@@ -182,7 +189,7 @@ try {
   const app2 = new Context()
   app2.plugin({ name: 'fake-web-2', apply(ctx) { ctx.provide('webServer', authedWebServer) } })
   app2.plugin({ name: 'fake-credentials', apply(ctx) { ctx.provide('credentials', fakeCredentials) } })
-  const fork2 = app2.plugin(panel, { workspaceRoot: 'D:/Doc/AIDoc/Dsh_dev/dsh_agi_dev' })
+  fork2 = app2.plugin(panel, { workspaceRoot: 'D:/Doc/AIDoc/Dsh_dev/dsh_agi_dev' })
   await waitFor('authenticated route', () => authedHandler !== null)
 
   await check('带有效 cookie → 200', async () => {
@@ -224,15 +231,91 @@ try {
     assert.equal(response.status, 401)
   })
 
-  console.log('\n[5] 卸载后路由撤销')
+  console.log('\n[5] 知识库换位置后，面板跟随指针')
+
+  const tmpRoot = await mkdtemp(join(tmpdir(), 'pseudo-agi-panel-'))
+  const tmpWs = join(tmpRoot, 'ws')
+  const tmpKb = join(tmpRoot, 'kb')
+  await mkdir(join(tmpKb, 'memory', 'semantic'), { recursive: true })
+  await mkdir(join(tmpKb, 'governance'), { recursive: true })
+  await writeFile(join(tmpKb, 'memory', 'semantic', 'mem-moved.md'),
+    '---\nid: "mem-moved"\nlayer: "semantic"\ntitle: "搬家后的记录"\nconfidence: 0.9\n'
+    + 'updatedAt: "2026-11-23T00:00:00.000Z"\n---\n\n# 搬家后的记录\n', 'utf8')
+  await writeFile(join(tmpKb, 'governance', 'session-moved.jsonl'),
+    '{"at":"2026-11-23T00:00:00.000Z","sessionId":"s","kind":"step","detail":{"turn":1,"step":1,"messages":1}}\n', 'utf8')
+  await writeFile(join(tmpKb, 'working.md'), '# 工作记忆摘要\n', 'utf8')
+  await mkdir(join(tmpWs, '.pseudo-agi'), { recursive: true })
+  await writeFile(join(tmpWs, '.pseudo-agi', 'store.json'),
+    JSON.stringify({ version: 1, root: tmpKb, movedFrom: join(tmpWs, '.pseudo-agi') }), 'utf8')
+  await writeFile(join(tmpWs, 'AGI_STATE.md'), '# AGI_STATE 测试\n', 'utf8')
+
+  let movedHandler = null
+  const movedWebServer = {
+    register(options) {
+      movedHandler = options.handler
+      return () => { movedHandler = null }
+    },
+  }
+  const app3 = new Context()
+  app3.plugin({ name: 'fake-web-3', apply(ctx) { ctx.provide('webServer', movedWebServer) } })
+  fork3 = app3.plugin(panel, { workspaceRoot: tmpWs })
+  await waitFor('moved route', () => movedHandler !== null)
+
+  await check('面板从指针指向的新根读记忆与日志', async () => {
+    const response = await invoke(movedHandler, 'GET', '/pseudo-agi/api/state')
+    assert.equal(response.status, 200)
+    const data = JSON.parse(response.body).data
+    assert.equal(data.store.source, 'pointer')
+    assert.equal(data.store.root, tmpKb)
+    assert.equal(data.store.warning, null)
+    assert.equal(data.layers.semantic, 1)
+    assert.ok(data.memories.some(record => record.id === 'mem-moved'))
+    assert.ok(data.events.some(record => record.kind === 'step'))
+    assert.match(data.workingDigest ?? '', /工作记忆摘要/)
+    // AGI_STATE.md 是工程状态，留在工作区根，不跟着知识库搬。
+    assert.match(data.agiState ?? '', /AGI_STATE 测试/)
+  })
+
+  await check('指针损坏时面板回退配置默认位置并暴露 warning', async () => {
+    await writeFile(join(tmpWs, '.pseudo-agi', 'store.json'), '{ broken', 'utf8')
+    let brokenHandler = null
+    const brokenWebServer = {
+      register(options) {
+        brokenHandler = options.handler
+        return () => { brokenHandler = null }
+      },
+    }
+    const app4 = new Context()
+    app4.plugin({ name: 'fake-web-4', apply(ctx) { ctx.provide('webServer', brokenWebServer) } })
+    fork4 = app4.plugin(panel, { workspaceRoot: tmpWs })
+    try {
+      await waitFor('broken route', () => brokenHandler !== null)
+      const response = await invoke(brokenHandler, 'GET', '/pseudo-agi/api/state')
+      assert.equal(response.status, 200)
+      const data = JSON.parse(response.body).data
+      assert.equal(data.store.source, 'config')
+      assert.equal(data.store.root, join(tmpWs, '.pseudo-agi'))
+      assert.match(String(data.store.warning), /not valid JSON/)
+      assert.equal(data.layers.semantic, 0)
+    } finally {
+      await fork4.dispose().catch(() => {})
+    }
+  })
+
+  await rm(tmpRoot, { recursive: true, force: true })
+
+  console.log('\n[6] 卸载后路由撤销')
 
   await check('dispose 后 handler 清空', async () => {
     await fork.dispose()
     await fork2.dispose()
-    await waitFor('route gone', () => routeHandler === null && authedHandler === null)
+    await fork3.dispose()
+    await waitFor('route gone', () => routeHandler === null && authedHandler === null && movedHandler === null)
   })
 } finally {
-  try { await fork.dispose() } catch { /* already disposed */ }
+  for (const item of [fork, fork2, fork3, fork4]) {
+    try { await item?.dispose() } catch { /* already disposed */ }
+  }
 }
 
 console.log(`\n${failures.length === 0 ? 'PASS' : 'FAIL'}: ${checks} passed, ${failures.length} failed`)

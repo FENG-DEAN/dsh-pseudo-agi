@@ -1,6 +1,6 @@
 # Layer order matters:
 #   memory     → storage, recall tools, per-step injection block
-#   tools      → controlled hands (guard + approval + policy check)
+#   tools      → controlled hands (guard + approval + policy check, + kb_store)
 #   scaffold   → injects one discipline line per turn; never routes, never picks tools
 #   governance → observes everything, injects nothing
 #   panel      → read-only sidebar view; no model surface at all
@@ -16,6 +16,13 @@
 # each one with an absolute path in your profile's cordis.patch.yml. This defect
 # has shipped twice in this project (memory, then governance); see
 # docs/spec-compliance.md §3.
+#
+# ── 知识库位置 ────────────────────────────────────────────────────────────────
+# `storeRoot: .pseudo-agi` is only a DEFAULT. The live root is whatever
+# `<workspaceRoot>/.pseudo-agi/store.json` points at, and all five rows follow
+# that one file. To move the knowledge base, ask the agent to run
+# `kb_store({ action: "relocate", to: "D:/AGI-KB/pseudo-agi" })` — do not edit
+# five configs by hand. See docs/install.md §6.
 # ─────────────────────────────────────────────────────────────────────────────
 
 - insert:
@@ -23,6 +30,7 @@
       name: '@pseudo-agi/memory'
       config:
         workspaceRoot: .
+        storeRoot: .pseudo-agi
         root: .pseudo-agi/memory
         maxInjectTokens: 900
         minCoverage: 0.34
@@ -34,6 +42,7 @@
       name: '@pseudo-agi/tools'
       config:
         workspaceRoot: .
+        storeRoot: .pseudo-agi
         knowledgeRoots:
           - docs
           - .pseudo-agi/memory
@@ -57,6 +66,7 @@
       name: '@pseudo-agi/governance'
       config:
         workspaceRoot: .
+        storeRoot: .pseudo-agi
         root: .pseudo-agi/governance
         journal: true
         maxSessions: 64
@@ -66,3 +76,4 @@
       name: '@pseudo-agi/panel'
       config:
         workspaceRoot: .
+        storeRoot: .pseudo-agi

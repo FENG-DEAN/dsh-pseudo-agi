@@ -26,34 +26,46 @@ pnpm verify            # build + smoke(27) + load-test(18)
 | 包 | 说明 |
 | --- | --- |
 | `@pseudo-agi/memory` | 记忆层 |
-| `@pseudo-agi/tools` | 手脚层 |
+| `@pseudo-agi/tools` | 手脚层（含 `kb_store`） |
 | `@pseudo-agi/scaffold` | 意识脚手架（注入纪律，不做路由） |
 | `@pseudo-agi/governance` | 治理层（对前两者只有编译期类型依赖） |
 | `@pseudo-agi/panel` | 浏览器面板（Host 路由 + 客户端半侧，只读） |
+| `@pseudo-agi/store` | 知识库位置：指针解析 + 迁移/回滚（纯库，不是插件） |
 | `@pseudo-agi/bundle` | 分发单元：`dsh.bundle.patch` + `cordis.patch.yml` |
 
-### 已验证的分发路径（`pnpm pack` + `file:`）
+### 已验证的分发路径（`pnpm pack` + `file:`，pnpm 11）
 
-`pnpm pack` 会把 `workspace:^0.1.0` 转成 `^0.1.0`，而 `@pseudo-agi/*` 不在公共 registry 上——所以直接把 bundle 装进 profile 会解析失败。实测可行的组合是「六个 tarball + `pnpm.overrides`」：
+`pnpm pack` 会把 `workspace:^0.1.0` 转成 `^0.1.0`，而 `@pseudo-agi/*` 不在公共 registry 上——所以直接把 bundle 装进 profile 会解析失败。实测可行的组合是「七个 tarball + `overrides` + 七个直接依赖」：
 
 ```jsonc
-// profile/package.json
+// profile/package.json —— 五/六个插件包必须各自是直接依赖：
+// cordis patch 按包名加载，pnpm 的严格布局不会把嵌套依赖提升到 profile 根。
 {
   "dependencies": {
-    "@pseudo-agi/bundle": "file:./packs/pseudo-agi-bundle-0.1.0.tgz"
-  },
-  "pnpm": {
-    // bundle 的 ^0.1.0 由 overrides 落回本地 tarball
-    "overrides": {
-      "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.1.0.tgz",
-      "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.1.0.tgz",
-      "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.1.0.tgz",
-      "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.1.0.tgz",
-      "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.1.0.tgz"
-    }
+    "@pseudo-agi/bundle": "file:./packs/pseudo-agi-bundle-0.1.0.tgz",
+    "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.1.0.tgz",
+    "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.1.0.tgz",
+    "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.1.0.tgz",
+    "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.1.0.tgz",
+    "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.1.0.tgz",
+    "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.1.0.tgz"
   }
 }
 ```
+
+```yaml
+# profile/pnpm-workspace.yaml —— overrides 在 pnpm 11 已迁到这里；
+# package.json 里的 "pnpm.overrides" 会被忽略（只有一条警告）。
+overrides:
+  "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.1.0.tgz"
+  "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.1.0.tgz"
+  "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.1.0.tgz"
+  "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.1.0.tgz"
+  "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.1.0.tgz"
+  "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.1.0.tgz"
+```
+
+`@pseudo-agi/store` 必须同时出现在两处：它是三个插件包的**运行时**依赖（不是 peer），缺了它 `memory`/`tools` 一加载就 `ERR_MODULE_NOT_FOUND`；bundle 的 `^0.1.0` 也只有 override 才能落回本地 tarball。
 
 外加 `.npmrc`：
 
@@ -64,7 +76,9 @@ strict-peer-dependencies=false
 
 理由：这些插件把 `@deepseek-ai/*` 声明为 peer，而那些包由宿主运行时提供、不在 registry 上；让 pnpm 去自动安装必然失败。
 
-**验证结果**（2026-11-22）：六个 tarball 全部 pack 成功；按上述配置 `pnpm install --ignore-scripts` 退出码 0；`node_modules/@pseudo-agi/` 下五个层包齐全，`bundle/cordis.patch.yml` 与各包 `lib/index.js`、`panel/client.js` 均在位；patch 里引用的五个插件名全部可解析。
+**验证结果**（2026-11-23，pnpm 11.28.5）：七个 tarball 全部 pack 成功；按上述配置 `pnpm install --ignore-scripts --no-frozen-lockfile` 退出码 0；`node_modules/@pseudo-agi/` 下 bundle + 六个包齐全；`@pseudo-agi/{memory,tools,governance,panel,store}` 五个包 `import()` 全部成功；`bundle/cordis.patch.yml` 里引用的五个插件名**逐个 `import()` 通过**。
+
+> 旧写法（把 overrides 放到 `package.json` 的 `pnpm` 字段）在 pnpm 11 下不生效：安装会退回 registry 并报 `ERR_PNPM_FETCH_404`。这是 2026-11-22 记录那次验证之后 pnpm 的行为变化。
 
 **分发时仍必须处理的两件事**：
 
@@ -125,7 +139,8 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 | 字段 | 默认 | 含义 |
 | --- | --- | --- |
 | `workspaceRoot` | `.` | `root` 与 `file` 证据引用解析的基准。**会话 cwd 与宿主 cwd 不一致时必须显式设置** |
-| `root` | `.pseudo-agi/memory` | 记忆树根目录（相对 `workspaceRoot`） |
+| `storeRoot` | `.pseudo-agi` | 知识库默认根；被 `<workspaceRoot>/.pseudo-agi/store.json` 指针覆盖 |
+| `root` | `.pseudo-agi/memory` | 记忆树根目录。以 `.pseudo-agi` 开头时按**活动根**解析 |
 | `recallLayers` | 全部四层 | 普通召回搜索哪些层 |
 | `injectLayers` | semantic/procedural/episodic | 每步注入哪些层 |
 | `maxInjectTokens` | `900` | 注入块 token 预算（保守估算 3 字符/token） |
@@ -141,13 +156,14 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 | 字段 | 默认 | 含义 |
 | --- | --- | --- |
 | `workspaceRoot` | `.` | 所有相对路径的基准 |
-| `knowledgeRoots` | `docs`、`.pseudo-agi/memory` | 只读检索可读的目录 |
-| `writeRoots` | `.` | 受控写入可写的目录 |
+| `storeRoot` | `.pseudo-agi` | 知识库默认根；被指针文件覆盖 |
+| `knowledgeRoots` | `docs`、`.pseudo-agi/memory` | 只读检索可读的目录；`.pseudo-agi` 前缀按活动根解析，绝对路径允许在工作区外（搬家后的知识库） |
+| `writeRoots` | `.` | 受控写入可写的目录；要把搬走的库设为可写就往这里加绝对路径 |
 | `maxScanBytes` | `524288` | 单文件扫描上限 |
 | `maxSnippetChars` | `240` | 命中行截断长度 |
 | `maxWriteBytes` | `262144` | 单次写入上限 |
 | `maxDepth` | `6` | 检索递归深度 |
-| `writeRequiresApproval` | `true` | 写操作是否走 `ask`（本工程 profile 里设为 `false`，边界交给 guard） |
+| `writeRequiresApproval` | `true` | 写操作是否走 `ask`（本工程 profile 里设为 `false`，边界交给 guard）。`kb_store` 不受此项影响 |
 | `deniedSegments` | `.git`、`node_modules`、`.ssh`、`.env` | 永不可读写的路径段 |
 | `deniedExtensions` | 可执行/脚本扩展名 | 永不可写入的扩展名 |
 
@@ -165,7 +181,8 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 | 字段 | 默认 | 含义 |
 | --- | --- | --- |
 | `workspaceRoot` | `.` | `root` 解析基准。**宿主进程 cwd 通常不是工程目录，必须显式设置** |
-| `root` | `.pseudo-agi/governance` | JSONL 目录（相对 `workspaceRoot`） |
+| `storeRoot` | `.pseudo-agi` | 知识库默认根；被指针文件覆盖 |
+| `root` | `.pseudo-agi/governance` | JSONL 目录。以 `.pseudo-agi` 开头时按**活动根**解析 |
 | `maxSessions` | `256` | 内存指标表容量（LRU 淘汰） |
 | `maxRecentLines` | `50` | `governance_report` 返回的尾部行数 |
 | `journal` | `true` | `false` 时只留内存指标 |
@@ -174,7 +191,7 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 
 装好后逐条验证（在 DSH 会话里操作）：
 
-1. **工具出现**：让模型列出可用工具，应看到 `memory_recall`、`memory_candidate`、`memory_commit`、`memory_forget`、`kb_search`、`kb_read`、`controlled_write`、`governance_report`。
+1. **工具出现**：让模型列出可用工具，应看到 `memory_recall`、`memory_candidate`、`memory_commit`、`memory_forget`、`kb_search`、`kb_read`、`controlled_write`、`kb_store`、`governance_report`。
 2. **空召回要说没找到**：`memory_recall({ query: "从未记录过的事情" })` → `found: false`，且 note 明确"只能回答没找到"。
 3. **检索带来源**：`kb_search({ query: "审批" })` → 每条命中都是 `path:line`；乱造词 → `found: false`。
 4. **写入需审批**：`controlled_write({ path: "tmp/demo.md", content: "hi" })` → 触发审批；在 `approval policy = never` 的会话里应直接 `rejected`。
@@ -184,11 +201,49 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 8. **每轮注入**：连续两轮对话，第二轮的系统提示里应出现 `当前长期记忆（每步刷新…）` 块（`.pseudo-agi/working.md` 同步更新）。
 9. **脚手架注入**：任一轮的首步 → 会话日志出现一条 `pseudo-agi-scaffold` 来源的消息，以 `[伪AGI·脚手架] 本轮纪律` 开头；同一轮的后续步不再出现。
 10. **治理数据**：`governance_report({})` 返回计数；`.pseudo-agi/governance/<sessionId>.jsonl` 每行一个 `{at, sessionId, kind, detail}`。
-11. **卸载即消失**：停用 `@pseudo-agi/memory` 后，四个 memory 工具与该 prompt 上下文同时消失；`kb_*` 与治理仍工作。停用 `@pseudo-agi/governance` 不影响其余三层。
+11. **知识库位置**：`kb_store({ action: "status" })` → 报告当前根、来源（指针/配置）、记忆条数与字节；看板顶部「知识库位置」显示同一个路径。
+12. **换位置（可选，见 §6）**：`kb_store({ action: "relocate", to: "D:/AGI-KB/pseudo-agi" })` → `copiedFiles` 与 `verified: true`；重启后 `kb_store status` 的 `source` 变成 `pointer`。
+13. **卸载即消失**：停用 `@pseudo-agi/memory` 后，四个 memory 工具与该 prompt 上下文同时消失；`kb_*` 与治理仍工作。停用 `@pseudo-agi/governance` 不影响其余三层。
 
-## 6. 回滚与取证
+## 6. 换位置存储（`kb_store`）
+
+知识库默认在 `<workspace>/.pseudo-agi`，也可以放在别的盘或同步目录。位置只有一处真源：
+
+```
+<workspace>/.pseudo-agi/store.json      # { "version": 1, "root": "<活动根>" }
+```
+
+四层（memory / tools / governance / panel）都读它，所以**不要**手工改四行 `root`——那正是本项目犯过两次的错误（见 [spec-compliance](spec-compliance.md) §3）。
+
+### 操作
+
+```text
+kb_store({ action: "status" })
+kb_store({ action: "relocate", to: "D:/AGI-KB/pseudo-agi" })
+kb_store({ action: "relocate", to: "D:/AGI-KB/pseudo-agi", overwrite: true })   # 目标非空
+kb_store({ action: "relocate", to: "D:/AGI-KB/pseudo-agi", move: true })        # 复制后删源
+kb_store({ action: "rollback" })                                               # 回到上一个位置
+```
+
+- `to` 是绝对路径，或相对 `workspaceRoot`；目标不能在当前库内部，也不能包含当前库。
+- 顺序是 **复制 → 校验（文件数 + 字节数）→ 最后写指针**：校验不过就抛错，指针不动，活动位置原地不变。
+- 源默认**保留**：误搬不丢数据，`rollback` 只改指针就能回去。只有显式 `move: true` 才删源内容（指针文件永远保留）。
+- 目标非空时必须显式 `overwrite: true`，避免覆盖别人的目录。
+
+### 生效时机
+
+四层都在**加载时**解析位置，因此 `relocate` 之后要重启宿主（或重载插件）新位置才全面生效；`kb_store status`、看板「知识库位置」与 `kb_store` 自身每次都重新读指针，可以立刻用来确认。
+
+### 边界
+
+- 会话文件策略 `read-only` 下 `relocate` / `rollback` 被拒绝；`workspace-write` 下不能搬到工作区外；`danger-full-access` 无此限制。`status` 是只读动作，任何策略下都放行。
+- 搬出去之后 `kb_search` / `kb_read` 仍可读（知识根可以是绝对路径）；`controlled_write` 只在 `writeRoots` 也显式包含新位置时才可写——读得到不等于写得进。
+- `AGI_STATE.md` 与 `docs/` 不跟着搬：前者是工程状态，后者是工程文档。
+
+## 7. 回滚与取证
 
 - 停用某层 = 删掉 patch 里对应行（或 `disabled: true`），不需要改代码。
 - 记忆是文件：`git diff .pseudo-agi/memory` 即可审阅新增/改动的记录，删文件即删除记忆。
 - 审计是 JSONL：`kind` 取值 `step`/`turn`/`tool`/`memory`/`route`/`error`，可 grep 回放。
 - `working.md` 与 `governance/*.jsonl` 都是投影/产物，可以安全删除。
+- 知识库位置：删掉 `store.json` 就回到配置默认位置；数据本身不受影响（搬家是复制，不是移动）。

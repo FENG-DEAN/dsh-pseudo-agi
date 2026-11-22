@@ -10,9 +10,23 @@ import z from '@deepseek-ai/schemastery'
 export interface ToolsConfig {
   /** Workspace root every relative path is resolved against. */
   readonly workspaceRoot: string
-  /** Directories (relative to the root) that readonly search may read. */
+  /**
+   * Default knowledge-base root, relative to the workspace root or absolute.
+   * A pointer file at `<workspaceRoot>/.pseudo-agi/store.json` overrides it, so
+   * one move re-points every layer instead of four config rows.
+   */
+  readonly storeRoot: string
+  /**
+   * Directories the readonly search may read, and the store-relative defaults
+   * for `kb_search`. `.pseudo-agi/...` entries follow the live store root; an
+   * absolute entry outside the workspace is allowed for reading.
+   */
   readonly knowledgeRoots: string[]
-  /** Directories (relative to the root) that guarded writes may touch. */
+  /**
+   * Directories guarded writes may touch. `kb_store relocate` is exempt from
+   * this list by design (moving the knowledge base is the point), but it still
+   * obeys the session file policy and the denial rules.
+   */
   readonly writeRoots: string[]
   /** Maximum size of one file the search walks. */
   readonly maxScanBytes: number
@@ -33,6 +47,7 @@ export interface ToolsConfig {
 /** Schemastery schema; invalid config fails at load time. */
 export const Config: z<ToolsConfig> = z.object({
   workspaceRoot: z.string().default('.'),
+  storeRoot: z.string().default('.pseudo-agi'),
   knowledgeRoots: z.array(z.string()).default(['docs', '.pseudo-agi/memory']),
   writeRoots: z.array(z.string()).default(['.']),
   maxScanBytes: z.number().default(512 * 1024),
@@ -53,6 +68,7 @@ export function validateConfig(config: ToolsConfig): void {
     throw new Error(`pseudo-agi-tools: ${message}`)
   }
   if (config.workspaceRoot.trim().length === 0) fail('config.workspaceRoot must not be empty')
+  if (config.storeRoot.trim().length === 0) fail('config.storeRoot must not be empty')
   if (config.knowledgeRoots.length === 0) fail('config.knowledgeRoots must list at least one directory')
   if (config.writeRoots.length === 0) fail('config.writeRoots must list at least one directory')
   for (const [name, value] of [

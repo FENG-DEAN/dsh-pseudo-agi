@@ -11,7 +11,8 @@
 
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { readFile, readdir, stat } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
+import { resolveStore } from '@pseudo-agi/store'
 
 /** Plugin name. */
 export const name = 'pseudo-agi-panel'
@@ -21,6 +22,9 @@ export const inject = ['webServer']
 
 /** Same-origin JSON route prefix owned by this plugin. */
 const ROUTE_PREFIX = '/pseudo-agi/api'
+
+/** Knowledge-base directory name used when the profile declares no `storeRoot`. */
+const DEFAULT_STORE_ROOT = '.pseudo-agi'
 
 /** Memory layers, in the order the panel lists them. */
 const LAYERS = ['working', 'episodic', 'semantic', 'procedural']
@@ -54,6 +58,10 @@ function validateConfig(config) {
   const workspaceRoot = config?.workspaceRoot
   if (typeof workspaceRoot !== 'string' || workspaceRoot.trim().length === 0) {
     throw new Error('pseudo-agi-panel: config.workspaceRoot must be a non-empty string')
+  }
+  const storeRoot = config?.storeRoot
+  if (storeRoot !== undefined && (typeof storeRoot !== 'string' || storeRoot.trim().length === 0)) {
+    throw new Error('pseudo-agi-panel: config.storeRoot must be a non-empty string when set')
   }
 }
 
@@ -110,17 +118,18 @@ function parseRecord(text, path) {
 
 /**
  * Collect every memory record, newest first.
- * @param {string} root workspace root.
+ * @param {object} location resolved store location.
  * @returns {Promise<{memories: object[], counts: Record<string, number>, errors: string[]}>} the view.
  */
-async function collectMemories(root) {
+async function collectMemories(location) {
   const memories = []
   const counts = {}
   const errors = []
   for (const layer of LAYERS) {
+    const directory = join(location.base, 'memory', layer)
     let names
     try {
-      names = await readdir(join(root, '.pseudo-agi', 'memory', layer))
+      names = await readdir(directory)
     } catch {
       counts[layer] = 0
       continue
@@ -128,7 +137,7 @@ async function collectMemories(root) {
     let count = 0
     for (const candidate of names.sort()) {
       if (!candidate.endsWith('.md')) continue
-      const path = join(root, '.pseudo-agi', 'memory', layer, candidate)
+      const path = join(directory, candidate)
       const text = await readText(path, 64 * 1024)
       if (text === null) {
         errors.push(`${layer}/${candidate}: unreadable`)
@@ -150,11 +159,11 @@ async function collectMemories(root) {
 
 /**
  * Read the tail of the newest governance journal, if any.
- * @param {string} root workspace root.
+ * @param {object} location resolved store location.
  * @returns {Promise<object[]>} journal records, oldest first.
  */
-async function collectEvents(root) {
-  const directory = join(root, '.pseudo-agi', 'governance')
+async function collectEvents(location) {
+  const directory = join(location.base, 'governance')
   let names
   try {
     names = await readdir(directory)
@@ -189,15 +198,15 @@ async function collectEvents(root) {
 /**
  * Build one snapshot for the panel.
  * @param {object} ctx plugin context.
- * @param {string} root workspace root.
+ * @param {object} location resolved store location.
  * @returns {Promise<object>} the payload.
  */
-async function collect(ctx, root) {
+async function collect(ctx, location) {
   const [{ memories, counts, errors }, events, bench, state] = await Promise.all([
-    collectMemories(root),
-    collectEvents(root),
-    readText(join(root, '.pseudo-agi', 'working.md'), MAX_TEXT),
-    readText(join(root, 'AGI_STATE.md'), MAX_TEXT),
+    collectMemories(location),
+    collectEvents(location),
+    readText(join(location.base, 'working.md'), MAX_TEXT),
+    readText(join(location.workspaceRoot, 'AGI_STATE.md'), MAX_TEXT),
   ])
   // Optional read: the tool registry may not be mounted in a minimal deploy.
   let toolCount = null
@@ -211,7 +220,14 @@ async function collect(ctx, root) {
   }
   return {
     generatedAt: new Date().toISOString(),
-    workspaceRoot: root,
+    workspaceRoot: location.workspaceRoot,
+    store: {
+      root: location.base,
+      source: location.source,
+      pointerPath: location.pointerPath,
+      fallback: location.fallback,
+      warning: location.warning ?? null,
+    },
     layers: counts,
     memoryTotal: Object.values(counts).reduce((sum, value) => sum + value, 0),
     memories,
@@ -333,7 +349,15 @@ function authorize(req, secret) {
  */
 export function apply(ctx, config) {
   validateConfig(config)
-  const root = resolve(config.workspaceRoot)
+  // The panel reads the same pointer file as the other layers, so a relocated
+  // knowledge base shows up here without a second config to keep in sync.
+  const location = resolveStore({
+    workspaceRoot: config.workspaceRoot,
+    storeRoot: config.storeRoot ?? DEFAULT_STORE_ROOT,
+  })
+  if (location.warning !== undefined) {
+    ctx.logger.warn(`pseudo-agi-panel: store pointer ignored: ${location.warning}`)
+  }
   /**
    * Auth state, resolved through a dependency-scoped context. Reading the cookie
    * secret straight from this plugin's own context can miss a service that a
@@ -392,7 +416,7 @@ export function apply(ctx, config) {
         send(404, { ok: false, error: `unknown action "${action}"` })
         return
       }
-      const data = await collect(ctx, root)
+      const data = await collect(ctx, location)
       // Read-only diagnostic: says whether this response was cookie-checked and why not.
       data.auth = { enforced: verdict !== 'unverifiable', reason: authState }
       send(200, { ok: true, data })

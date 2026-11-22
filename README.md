@@ -1,6 +1,6 @@
 # 伪AGI · DSH 插件工程
 
-五个**相互独立、可单独卸载**的 DSH 插件，通过 Cordis 生命周期、事件、上下文注入串成闭环。
+五个**相互独立、可单独卸载**的 DSH 插件，加一个共享的知识库位置库（`@pseudo-agi/store`），通过 Cordis 生命周期、事件、上下文注入串成闭环。
 
 **角色分配是这套东西的前提：意识就是模型（不是插件）；插件只提供意识自己做不到的事——改自己的上下文、跨步持久化、强制边界、留下轨迹。**
 
@@ -13,7 +13,7 @@
   → 模型判断这一步做什么、调哪个工具
   → tools/pre-execute ──► tools：写操作按配置决定是否 ask（当前关闭）
   → tools.guard()     ──► tools：单调否决（路径越界 / 禁止段 / 禁止扩展名）
-  → 工具执行 ──► memory_recall / kb_search / kb_read / controlled_write
+  → 工具执行 ──► memory_recall / kb_search / kb_read / controlled_write / kb_store
   → tools/result ──► governance：记录工具三元组
   → agent/turn-stopping ──► memory：刷新 working.md（仅变化时）；governance：记轮次
 ```
@@ -25,14 +25,15 @@
 | 路径 | 作用 |
 | --- | --- |
 | [packages/pseudo-agi-memory](packages/pseudo-agi-memory) | 分层记忆：工作 / 情景 / 语义 / 程序；Markdown 真源；`memory_recall`、`memory_candidate`、`memory_commit`、`memory_forget` |
-| [packages/pseudo-agi-tools](packages/pseudo-agi-tools) | 受控手脚：`kb_search`、`kb_read`、`controlled_write` + `ctx.tools.guard()` |
+| [packages/pseudo-agi-tools](packages/pseudo-agi-tools) | 受控手脚：`kb_search`、`kb_read`、`controlled_write`、`kb_store` + `ctx.tools.guard()` |
 | [packages/pseudo-agi-scaffold](packages/pseudo-agi-scaffold) | 意识脚手架：每轮首步注入纪律 + 发 `scaffold-step` 事件；**不做路由、不选工具** |
 | [packages/pseudo-agi-governance](packages/pseudo-agi-governance) | 治理层：只读观察器 + 指标 + JSONL 审计 + `governance_report` |
-| [packages/pseudo-agi-panel](packages/pseudo-agi-panel) | 左侧栏只读面板：Host 一条同源路由 + 客户端两个 slot；自验 `dsh-auth` 签名 cookie |
+| [packages/pseudo-agi-panel](packages/pseudo-agi-panel) | 左侧栏只读面板：Host 一条同源路由 + 客户端两个 slot；自验 `dsh-auth` 签名 cookie；显示知识库位置 |
+| [packages/pseudo-agi-store](packages/pseudo-agi-store) | 知识库位置：指针解析 + 迁移/回滚原语（纯库，无构建步骤，不是插件） |
 | [packages/pseudo-agi-bundle](packages/pseudo-agi-bundle) | 分发单元：`package.json` 的 `dsh.bundle.patch` + `cordis.patch.yml` |
-| [docs/architecture.md](docs/architecture.md) | 事件流、注册/释放清单、与 DSH 契约的对应关系 |
+| [docs/architecture.md](docs/architecture.md) | 事件流、注册/释放清单、磁盘布局与知识库活动根、与 DSH 契约的对应关系 |
 | [docs/spec-compliance.md](docs/spec-compliance.md) | 三条硬约束逐条对照；方案里几处 API 名称的纠正 |
-| [docs/install.md](docs/install.md) | 构建、打包、装载、最小闭环配置、验收清单 |
+| [docs/install.md](docs/install.md) | 构建、打包、装载、最小闭环配置、验收清单、换位置存储操作 |
 
 ## 三条硬约束怎么落实
 
@@ -75,11 +76,12 @@ pnpm typecheck
 
 | 检查 | 命令 | 结果 |
 | --- | --- | --- |
-| 五包编译 | `pnpm -r run build` | 通过 |
-| 纯逻辑/存储/围栏/策略/指标 | `pnpm smoke` | 38/38 |
-| 真实服务加载 + 注入 + 卸载 | `pnpm load-test` | 18/18 |
-| 面板路由 / 数据契约 / 签名 cookie 鉴权 | `pnpm panel-test` | 14/14 |
-| 真机：五层加载、面板入口、`read-only` 拒绝写入 | 手动（见 `AGI_STATE.md` 验证记录） | 通过 |
+| 四包编译（`store`/`panel`/`bundle` 无构建步骤） | `pnpm -r run build` | 通过 |
+| 纯逻辑/存储/围栏/策略/指标 | `pnpm smoke` | 41/41 |
+| 知识库位置：指针优先级、迁移、回滚、四层一致 | `pnpm store-test` | 23/23 |
+| 真实服务加载 + 注入 + 卸载 + `kb_store` 端到端 | `pnpm load-test` | 26/26 |
+| 面板路由 / 数据契约 / 鉴权 / 跟随指针 | `pnpm panel-test` | 16/16 |
+| 真机：五层加载、面板入口、`read-only` 拒绝写入 | 手动（见 `AGI_STATE.md` 验证记录） | 通过（换位置待重启后真机确认） |
 | 真实 LLM 往返、审批 UI 交互 | — | ⛔ 有意未验证（`writeRequiresApproval: false`，该路径不触发） |
 
 `load-test` 加载的是**真实的** `@deepseek-ai/dsh-system-prompt` 与 `@deepseek-ai/dsh-tools`，因此这三点是按真机语义验证的，不是替身：

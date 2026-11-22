@@ -10,7 +10,8 @@
     "smoke": "node scripts/smoke.mjs",
     "load-test": "node scripts/load-test.mjs",
     "panel-test": "node scripts/panel-test.mjs",
-    "verify": "pnpm -r run build && pnpm smoke && pnpm load-test && pnpm panel-test"
+    "store-test": "node scripts/store-test.mjs",
+    "verify": "pnpm -r run build && pnpm smoke && pnpm store-test && pnpm load-test && pnpm panel-test"
   },
   "engines": {
     "node": ">=20.11"

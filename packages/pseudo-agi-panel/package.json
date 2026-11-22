@@ -13,6 +13,9 @@
     "client.js"
   ],
   "license": "MIT",
+  "dependencies": {
+    "@pseudo-agi/store": "workspace:^0.1.0"
+  },
   "dsh": {
     "client": {
       "platform": "web",

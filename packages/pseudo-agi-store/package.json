@@ -1,0 +1,21 @@
+{
+  "name": "@pseudo-agi/store",
+  "version": "0.1.0",
+  "description": "Where the pseudo-AGI knowledge base lives: one pointer file, one resolver, and a verified move/rollback primitive shared by every layer",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
+  "license": "MIT"
+}

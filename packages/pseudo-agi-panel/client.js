@@ -40,6 +40,10 @@ window.__ModuleLoader__.load({
         tools: 'tools',
         generated: 'Snapshot',
         superseded: 'replaced',
+        store: 'Knowledge base',
+        storePointer: 'pointer file',
+        storeConfig: 'configured default',
+        storeWarning: 'pointer ignored',
       },
       zh: {
         panel: '鲸鱼娘 AGI',
@@ -49,7 +53,7 @@ window.__ModuleLoader__.load({
         loading: '加载中…',
         failed: '无法读取面板状态',
         memories: '记忆',
-        memoriesHint: '按更新时间倒序。真源是 .pseudo-agi/memory 下的 Markdown。',
+        memoriesHint: '按更新时间倒序。真源是知识库 memory 目录下的 Markdown。',
         events: '最近事件',
         eventsHint: '来自治理日志：决策、行动、结果。',
         bench: '工作台',
@@ -61,6 +65,10 @@ window.__ModuleLoader__.load({
         tools: '个工具',
         generated: '快照',
         superseded: '已取代',
+        store: '知识库位置',
+        storePointer: '来自指针文件',
+        storeConfig: '来自配置默认值',
+        storeWarning: '指针被忽略',
       },
     }
 
@@ -110,6 +118,11 @@ window.__ModuleLoader__.load({
 .pa-meta { flex: none; color: var(--dsw-alias-label-secondary); font-size: 11px; }
 .pa-retired { opacity: .5; }
 .pa-retired .pa-name { text-decoration: line-through; }
+.pa-store { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 8px 12px; border-radius: 10px; background: var(--dsw-alias-bg-layer-2, transparent); border: 1px solid var(--dsw-alias-border-l1); font-size: 11.5px; }
+.pa-storeLabel { color: var(--dsw-alias-label-secondary); flex: none; }
+.pa-storePath { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; word-break: break-all; }
+.pa-storeSource { color: var(--dsw-alias-label-secondary); flex: none; }
+.pa-storeWarn { color: var(--dsw-alias-state-error-primary); flex: none; }
 .pa-empty { color: var(--dsw-alias-label-secondary); font-size: 12px; padding: 6px 0; }
 .pa-pre { margin: 0; padding: 0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; color: var(--dsw-alias-label-primary); max-height: 320px; overflow: auto; }
 .pa-error { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--dsw-alias-state-error-primary); color: var(--dsw-alias-state-error-primary); font-size: 12px; }
@@ -204,6 +217,7 @@ window.__ModuleLoader__.load({
       const layers = state?.layers ?? {}
       const memories = state?.memories ?? []
       const events = state?.events ?? []
+      const store = state?.store ?? null
 
       const chip = (value, label) => h('span', { className: 'pa-chip' },
         h('span', { className: 'pa-chipValue' }, String(value)),
@@ -254,6 +268,13 @@ window.__ModuleLoader__.load({
             chip(state?.memoryTotal ?? 0, t('memories')),
             chip(state?.toolCount ?? '?', t('tools')),
             chip(events.length, t('events'))),
+          store === null ? null : h('div', { className: 'pa-store' },
+            h('span', { className: 'pa-storeLabel' }, t('store')),
+            h('code', { className: 'pa-storePath' }, String(store.root ?? '?')),
+            h('span', { className: 'pa-storeSource' }, store.source === 'pointer' ? t('storePointer') : t('storeConfig')),
+            store.warning === null || store.warning === undefined
+              ? null
+              : h('span', { className: 'pa-storeWarn' }, `${t('storeWarning')}: ${store.warning}`)),
           card(t('layers'), state === null ? null : `${t('generated')} ${String(state.generatedAt).slice(0, 19).replace('T', ' ')}`, h('div', {}, layerRows)),
           card(t('memories'), t('memoriesHint'), h('div', {}, memoryRows)),
           card(t('events'), t('eventsHint'), h('div', {}, eventRows)),

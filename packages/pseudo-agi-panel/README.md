@@ -6,7 +6,7 @@
 
 | 半侧 | 位置 | 作用 |
 | --- | --- | --- |
-| Host | `index.js` | 注册一条同源路由 `GET /pseudo-agi/api/state`，把分层计数、记忆列表、治理事件、`AGI_STATE.md` 摘要算好一次返回 |
+| Host | `index.js` | 注册一条同源路由 `GET /pseudo-agi/api/state`，把知识库位置、分层计数、记忆列表、治理事件、`AGI_STATE.md` 摘要算好一次返回 |
 | Client | `client.js` | `window.__ModuleLoader__.load` 加载，注册两个 slot：`sidebar.panellist`（左栏入口）与 `main`（面板主体） |
 
 数据全部来自文件——记忆目录、治理 JSONL、`AGI_STATE.md`。**它不调用任何工具、不写文件、不碰 loop**，因此随时可以卸载而不影响 AGI 的任何能力。
@@ -25,16 +25,18 @@
 
 ## 面板内容
 
+- **知识库位置**：当前活动根、它来自指针文件还是配置默认值；指针损坏时显示 warning。它读的是和 `kb_store status` 同一份指针；
 - **分层**：四层各自的记录数；
 - **记忆**：按更新时间倒序，带 confidence、本地时区日期；**已被取代的记录会变灰、加删除线并标「已取代」**；
 - **事件**：治理 JSONL 的尾部，时间按浏览器时区渲染；
-- **工作台**：`AGI_STATE.md` 的前 4000 字符。
+- **工作台**：`AGI_STATE.md` 的前 4000 字符（这个文件留在工作区根，不跟着知识库搬）。
 
 ## 配置
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `workspaceRoot` | `无（必填）` | 读文件与解析路径的基准，必须是绝对路径 |
+| `storeRoot` | `.pseudo-agi` | 知识库默认根；被 `<workspaceRoot>/.pseudo-agi/store.json` 指针覆盖 |
 
 ## 依赖
 

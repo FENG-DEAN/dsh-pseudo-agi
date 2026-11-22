@@ -20,7 +20,18 @@ export interface MemoryConfig {
    * while evidence checks look in the wrong tree.
    */
   readonly workspaceRoot: string
-  /** Root directory of the memory tree, resolved against the workspace root. */
+  /**
+   * Default knowledge-base root, relative to the workspace root or absolute.
+   * Only a default: when `<workspaceRoot>/.pseudo-agi/store.json` exists it
+   * names the live root and wins, so a relocation takes effect in every layer
+   * at once instead of in four configs that can drift apart.
+   */
+  readonly storeRoot: string
+  /**
+   * Root directory of the memory tree. A path starting with `.pseudo-agi` is
+   * resolved against the live store root (see {@link storeRoot}); anything else
+   * keeps its old meaning and resolves against `workspaceRoot`.
+   */
   readonly root: string
   /** Layers considered by an ordinary recall call. */
   readonly recallLayers: MemoryLayer[]
@@ -45,6 +56,7 @@ export interface MemoryConfig {
 /** Schemastery schema; invalid config fails at load time. */
 export const Config: z<MemoryConfig> = z.object({
   workspaceRoot: z.string().default('.'),
+  storeRoot: z.string().default('.pseudo-agi'),
   root: z.string().default('.pseudo-agi/memory'),
   recallLayers: z.array(z.union(MEMORY_LAYERS)).default([...MEMORY_LAYERS]),
   injectLayers: z.array(z.union(MEMORY_LAYERS)).default(['semantic', 'procedural', 'episodic']),
@@ -67,6 +79,7 @@ export function validateConfig(config: MemoryConfig): void {
     throw new Error(`pseudo-agi-memory: ${message}`)
   }
   if (config.workspaceRoot.trim().length === 0) fail('config.workspaceRoot must not be empty')
+  if (config.storeRoot.trim().length === 0) fail('config.storeRoot must not be empty')
   if (config.root.trim().length === 0) fail('config.root must not be empty')
   for (const [name, value] of [
     ['maxInjectTokens', config.maxInjectTokens],

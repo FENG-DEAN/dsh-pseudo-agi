@@ -8,7 +8,9 @@
 | 手脚 | `pseudo-agi-tools` | 只读取证、受控写入、guard 边界 | 不记忆、不决定做什么 |
 | 意识脚手架 | `pseudo-agi-scaffold` | 每轮首步注入一条纪律、发 `scaffold-step` 事件 | **不路由、不选工具、不改 loop 决策、不读用户文本做分类** |
 | 治理 | `pseudo-agi-governance` | 只读观察、指标、JSONL、report 工具 | 不改变任何决策 |
-| 面板 | `pseudo-agi-panel` | 左侧栏入口 + 只读视图（分层/记忆/事件/工作台）、一条同源 JSON 路由 | **不写文件、不调工具、不碰 loop** |
+| 面板 | `pseudo-agi-panel` | 左侧栏入口 + 只读视图（知识库位置/分层/记忆/事件/工作台）、一条同源 JSON 路由 | **不写文件、不调工具、不碰 loop** |
+
+另有一个**不是插件**的横切库 `@pseudo-agi/store`：解析知识库活动根、统计、迁移与回滚。memory / tools / governance / panel 都是它的消费者，它本身不注册任何 `ctx.*`（详见 §4.1）。
 
 **判断权归模型**。scaffold 必须 `await next()` 之后只追加、不否决；它没有关键词表，也不看 `ctx.tools.definitions()`。四层之间没有硬依赖，加载组合是自由的。
 
@@ -51,6 +53,7 @@
 ```
 <workspace>/
 ├── .pseudo-agi/
+│   ├── store.json                    # 知识库指针：活动根在哪（见 §4.1）
 │   ├── working.md                    # memory 的投影：树变化时刷新（可删）
 │   ├── memory/
 │   │   ├── working/   <id>.md        # 本任务用
@@ -62,6 +65,23 @@
 │       └── <sessionId>.jsonl         # 决策-行动-结果三元组
 └── docs/                              # kb_search / kb_read 的知识根
 ```
+
+### 4.1 知识库活动根（可换位置）
+
+上面那棵树落在 `<workspace>/.pseudo-agi` 只是**默认值**。真正的位置由指针文件决定：
+
+```json
+// <workspace>/.pseudo-agi/store.json
+{ "version": 1, "root": "D:/AGI-KB/pseudo-agi", "movedAt": "…", "movedFrom": "…" }
+```
+
+解析优先级：**指针 → 配置 `storeRoot` → `<workspace>/.pseudo-agi`**。四层（memory / tools / governance / panel）都从这一个文件解析，实现只有一份：`@pseudo-agi/store`（纯库、无构建步骤、无宿主依赖）。
+
+配置里以 `.pseudo-agi` 开头的路径（`memory.root`、`governance.root`、`tools.knowledgeRoots`）按**活动根**解析，所以搬家后不需要改任何一行的 `root`——这正是把位置放进数据而不是放进四个配置的原因。以绝对路径写死的条目则原样保留，作为"我不在乎指针"的逃生口。
+
+`kb_store` 是唯一写入口（`status` / `relocate` / `rollback`），顺序是**复制 → 校验文件数与字节 → 最后写指针**：复制失败时活动位置原地不动；源默认保留（`move: true` 才删）；目标非空要显式 `overwrite`。`rollback` 只重新指向、不动数据，因此误搬不会丢记录。看板上「知识库位置」一行就是 `status` 的同一份数据。
+
+`AGI_STATE.md` 与 `docs/` 留在工作区：前者是"意识正在做什么"的工程状态，后者是工程文档，都不是知识库的搬家单位。
 
 记录格式：Markdown + JSON 值 front matter（不用 YAML 依赖，round-trip 无损）：
 

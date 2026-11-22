@@ -30,7 +30,8 @@
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `workspaceRoot` | `.` | JSONL 目录的基准。**必须显式配绝对路径**——用 `process.cwd()` 会让写入静默失败（本项目踩过两次） |
-| `root` | `.pseudo-agi/governance` | 日志目录（相对 `workspaceRoot`） |
+| `storeRoot` | `.pseudo-agi` | 知识库默认根；被 `<workspaceRoot>/.pseudo-agi/store.json` 指针覆盖 |
+| `root` | `.pseudo-agi/governance` | 日志目录。以 `.pseudo-agi` 开头时按**活动根**解析——审计日志跟着知识库一起搬，不会分家 |
 | `journal` | `true` | 是否落 JSONL；关掉后只有内存指标 |
 | `maxSessions` | `256` | 内存中保留的会话数，超出按最近使用淘汰 |
 | `maxRecentLines` | `50` | `governance_report` 返回的事件尾巴长度 |

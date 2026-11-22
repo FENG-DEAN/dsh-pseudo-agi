@@ -18,8 +18,10 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, sep } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { relocateStore, resolveStore, rollbackStore, storePath, storeStats } from '@pseudo-agi/store'
+import type { StoreLocation } from '@pseudo-agi/store'
 import type { ToolsConfig } from './config.js'
-import { denyReason, isWritable, resolveInside } from './workspace.js'
+import { denyReason, isWritable, resolveInRoots } from './workspace.js'
 
 /** Extensions the readonly walk considers text. */
 const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -31,6 +33,12 @@ export interface ToolDeps {
   readonly config: ToolsConfig
   /** Absolute workspace root. */
   readonly root: string
+  /** The live knowledge-base location, resolved once at load time. */
+  readonly store: StoreLocation
+  /** Absolute knowledge roots, already mapped onto the live store. */
+  readonly knowledgeRoots: readonly string[]
+  /** Absolute write roots, already mapped from the configuration. */
+  readonly writeRoots: readonly string[]
 }
 
 /** One line hit of a knowledge-base search. */
@@ -107,7 +115,7 @@ function cite(root: string, absolute: string): string {
  * @param deps - config and workspace root.
  */
 export function registerControlledTools(ctx: Context, deps: ToolDeps): void {
-  const { config, root } = deps
+  const { config, root, store, knowledgeRoots, writeRoots } = deps
 
   ctx.tools.register(defineTool({
     name: 'kb_search',
@@ -162,7 +170,13 @@ export function registerControlledTools(ctx: Context, deps: ToolDeps): void {
         return { found: false, scannedFiles: 0, hits: [], note: '查询为空：请给出实际要查找的词。' }
       }
       const limit = args.limit ?? 20
-      const roots = (args.roots ?? config.knowledgeRoots).map(candidate => resolveInside(root, candidate))
+      // `roots` accepts `.pseudo-agi/...` paths and follows the live store, so a
+      // relocated knowledge base is searched without rewriting the call. The
+      // candidate still has to land inside the workspace or a declared root:
+      // readable does not mean "anywhere on disk".
+      const roots = args.roots === undefined
+        ? [...knowledgeRoots]
+        : args.roots.map(candidate => resolveInRoots(root, knowledgeRoots, storePath(store, candidate)))
       const hits: SearchHit[] = []
       let scannedFiles = 0
 
@@ -246,8 +260,8 @@ export function registerControlledTools(ctx: Context, deps: ToolDeps): void {
     },
     async execute(args, exec) {
       exec.signal.throwIfAborted()
-      const absolute = resolveInside(root, args.path)
-      const denial = denyReason(config, root, absolute)
+      const absolute = resolveInRoots(root, knowledgeRoots, args.path)
+      const denial = denyReason(config, root, absolute, [root, ...knowledgeRoots])
       if (denial !== undefined) throw new Error(denial)
       const info = await stat(absolute)
       if (!info.isFile()) throw new Error(`不是普通文件：${args.path}`)
@@ -304,11 +318,13 @@ export function registerControlledTools(ctx: Context, deps: ToolDeps): void {
     },
     async execute(args, exec) {
       exec.signal.throwIfAborted()
-      const absolute = resolveInside(root, args.path)
-      if (!isWritable(config, root, absolute)) {
+      // A relocated knowledge base only stays writable when its root is also a
+      // configured write root; reading it elsewhere is not permission to write.
+      const absolute = resolveInRoots(root, writeRoots, args.path)
+      if (!isWritable(config, root, absolute, writeRoots)) {
         throw new Error(`目标不在允许的写入根目录内：${config.writeRoots.join(', ')}`)
       }
-      const denial = denyReason(config, root, absolute)
+      const denial = denyReason(config, root, absolute, [root, ...writeRoots])
       if (denial !== undefined) throw new Error(denial)
 
       const mode = args.mode ?? 'overwrite'
@@ -347,6 +363,170 @@ export function registerControlledTools(ctx: Context, deps: ToolDeps): void {
         bytes: Buffer.byteLength(payload, 'utf8'),
         created,
         mode,
+      }
+    },
+  }))
+
+  /**
+   * Re-read the pointer on every call: `status` exists to report what is true
+   * now, and `relocate` must not act on a stale root.
+   */
+  const currentStore = (): StoreLocation => resolveStore({ workspaceRoot: root, storeRoot: config.storeRoot })
+
+  const RESTART_NOTE = '记忆、工具、治理、面板四层都在加载时解析位置：重启宿主（或重载插件）后新位置才全面生效。'
+
+  ctx.tools.register(defineTool({
+    name: 'kb_store',
+    description:
+      'Inspect or move where the knowledge base lives — memory records, staged candidates, working.md, and '
+      + 'the governance journal. `status` reports the live root and what decides it (a pointer file or the '
+      + 'configured default). `relocate` copies the whole tree to another directory, verifies file count and '
+      + 'bytes, then re-points one pointer file; the source is kept unless move: true. `rollback` re-points to '
+      + 'the previous root without touching data. Guarded like a write: refused under a read-only session policy.',
+    parameters: {
+      action: {
+        type: 'string',
+        required: true,
+        enum: ['status', 'relocate', 'rollback'],
+        description: 'status reads; relocate copies then re-points; rollback re-points back.',
+      },
+      to: {
+        type: 'string',
+        description: 'relocate: destination directory (absolute, or relative to the workspace root). '
+          + 'rollback: optional explicit root to return to.',
+      },
+      move: { type: 'boolean', description: 'relocate: delete the source contents after a verified copy (default false).' },
+      overwrite: { type: 'boolean', description: 'relocate: allow a non-empty destination (default false).' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          action: { type: 'string', required: true, enum: ['status', 'relocate', 'rollback'] },
+          base: { type: 'string', required: true },
+          source: { type: 'string', required: true, enum: ['pointer', 'config'] },
+          fallback: { type: 'string', required: true },
+          pointerPath: { type: 'string', required: true },
+          files: { type: 'integer', required: true },
+          bytes: { type: 'integer', required: true },
+          layers: {
+            type: 'object',
+            required: true,
+            additionalProperties: false,
+            properties: {
+              working: { type: 'integer', required: true },
+              episodic: { type: 'integer', required: true },
+              semantic: { type: 'integer', required: true },
+              procedural: { type: 'integer', required: true },
+            },
+          },
+          candidates: { type: 'integer', required: true },
+          governanceFiles: { type: 'integer', required: true },
+          workingDigest: { type: 'boolean', required: true },
+          from: { type: 'string' },
+          to: { type: 'string' },
+          copiedFiles: { type: 'integer' },
+          copiedBytes: { type: 'integer' },
+          verified: { type: 'boolean' },
+          moved: { type: 'boolean' },
+          removedPointer: { type: 'boolean' },
+          restartRequired: { type: 'boolean', required: true },
+          note: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => {
+        const where = `${value.base}（来源：${value.source === 'pointer' ? '指针文件' : '配置'}）`
+        if (value.action === 'status') {
+          const committed = value.layers.working + value.layers.episodic + value.layers.semantic + value.layers.procedural
+          return [{
+            type: 'text',
+            text: `知识库位置：${where}\n`
+              + `文件 ${value.files} 个 / ${value.bytes} bytes；记忆 ${committed} 条（working ${value.layers.working} / `
+              + `episodic ${value.layers.episodic} / semantic ${value.layers.semantic} / procedural ${value.layers.procedural}），`
+              + `候选 ${value.candidates}，治理日志 ${value.governanceFiles} 个${value.workingDigest ? '，working.md 在位' : ''}\n`
+              + `指针文件：${value.pointerPath}\n${value.note}`,
+          }]
+        }
+        const verb = value.action === 'relocate' ? '迁移' : '回滚'
+        return [{
+          type: 'text',
+          text: `知识库已${verb}：${value.from} → ${value.to}\n`
+            + (value.action === 'relocate'
+              ? `复制 ${value.copiedFiles ?? 0} 个文件 / ${value.copiedBytes ?? 0} bytes，校验${value.verified === true ? '通过' : '未通过'}`
+                + `${value.moved === true ? '，源内容已删除' : '，源内容已保留'}\n`
+              : `${value.removedPointer === true ? '指针文件已删除（回到配置默认位置）' : '指针已改写'}\n`)
+            + `当前位置：${where}\n${value.note}`,
+        }]
+      },
+    },
+    async execute(args, exec) {
+      exec.signal.throwIfAborted()
+      /** Build the shared view of one location for the output schema. */
+      const view = async (location: StoreLocation) => {
+        const stats = await storeStats(location)
+        return {
+          base: location.base,
+          source: location.source,
+          fallback: location.fallback,
+          pointerPath: location.pointerPath,
+          files: stats.files,
+          bytes: stats.bytes,
+          layers: {
+            working: stats.layers.working ?? 0,
+            episodic: stats.layers.episodic ?? 0,
+            semantic: stats.layers.semantic ?? 0,
+            procedural: stats.layers.procedural ?? 0,
+          },
+          candidates: stats.candidates,
+          governanceFiles: stats.governanceFiles,
+          workingDigest: stats.workingDigest,
+        }
+      }
+
+      if (args.action === 'status') {
+        const location = currentStore()
+        return {
+          action: args.action,
+          ...(await view(location)),
+          restartRequired: false,
+          note: location.warning === undefined
+            ? RESTART_NOTE
+            : `指针文件不可用，已回退到配置默认位置：${location.warning}`,
+        }
+      }
+
+      if (args.action === 'relocate') {
+        const before = currentStore()
+        const report = await relocateStore(before, {
+          to: args.to ?? '',
+          move: args.move === true,
+          overwrite: args.overwrite === true,
+        })
+        return {
+          action: args.action,
+          ...(await view(currentStore())),
+          from: report.from,
+          to: report.to,
+          copiedFiles: report.copied.files,
+          copiedBytes: report.copied.bytes,
+          verified: report.verified,
+          moved: report.moved,
+          restartRequired: true,
+          note: `${RESTART_NOTE}${report.moved ? ' 源目录内容已删除（指针文件保留）。' : ' 源目录内容已保留，回滚不需要复制。'}`,
+        }
+      }
+
+      const before = currentStore()
+      const report = await rollbackStore(before, args.to === undefined ? {} : { to: args.to })
+      return {
+        action: args.action,
+        ...(await view(currentStore())),
+        from: report.from,
+        to: report.base,
+        removedPointer: report.removed,
+        restartRequired: report.changed,
+        note: report.reason ?? `${RESTART_NOTE} 数据未被改动。`,
       }
     },
   }))

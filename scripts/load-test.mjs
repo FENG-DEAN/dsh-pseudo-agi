@@ -56,6 +56,8 @@ async function waitFor(label, predicate, timeoutMs = 4000) {
 }
 
 const workspace = await mkdtemp(join(tmpdir(), 'pseudo-agi-load-'))
+/** Set by the `kb_store` group; removed in `finally` even when later checks fail. */
+let movedParent = null
 await mkdir(join(workspace, 'docs'), { recursive: true })
 await writeFile(join(workspace, 'docs', 'approval.md'), '# 审批\n\n写操作必须先经过审批。\n', 'utf8')
 
@@ -112,20 +114,20 @@ try {
     assert.equal(app.tools.get('memory_recall')?.output.schema.type, 'object')
   })
 
-  await check('tools 加载：新增 3 个工具，guard 生效', async () => {
+  await check('tools 加载：新增 4 个工具，guard 生效', async () => {
     forks.push(app.plugin(tools, toolsConfig))
-    await waitFor('hand tools', () => toolNames().length === 7)
+    await waitFor('hand tools', () => toolNames().length === 8)
     assert.deepEqual(toolNames(), [
-      'controlled_write', 'kb_read', 'kb_search',
+      'controlled_write', 'kb_read', 'kb_search', 'kb_store',
       'memory_candidate', 'memory_commit', 'memory_forget', 'memory_recall',
     ])
     assert.match(String(app.tools.checkGuards({ name: 'controlled_write', arguments: { path: '../x' } })?.reason), /路径越界/)
   })
 
-  await check('scaffold 与 governance 加载后共 8 个工具', async () => {
+  await check('scaffold 与 governance 加载后共 9 个工具', async () => {
     forks.push(app.plugin(scaffold, scaffoldConfig))
     forks.push(app.plugin(governance, governanceConfig))
-    await waitFor('governance tool', () => toolNames().length === 8)
+    await waitFor('governance tool', () => toolNames().length === 9)
     assert.ok(toolNames().includes('governance_report'))
   })
 
@@ -140,6 +142,14 @@ try {
   await check('合法写入与只读工具不被否决', () => {
     assert.equal(app.tools.checkGuards({ name: 'controlled_write', arguments: { path: 'docs/ok.md' } }), undefined)
     assert.equal(app.tools.checkGuards({ name: 'kb_search', arguments: { query: 'x' } }), undefined)
+    assert.equal(app.tools.checkGuards({ name: 'kb_store', arguments: { action: 'status' } }), undefined)
+    assert.equal(app.tools.checkGuards({ name: 'kb_store', arguments: { action: 'relocate', to: '../elsewhere' } }), undefined)
+  })
+
+  await check('kb_store 缺 action 或未知 action 被否决', () => {
+    assert.match(String(app.tools.checkGuards({ name: 'kb_store', arguments: {} })?.reason), /action/)
+    assert.match(String(app.tools.checkGuards({ name: 'kb_store', arguments: { action: 'teleport' } })?.reason), /不认识 action/)
+    assert.match(String(app.tools.checkGuards({ name: 'kb_store', arguments: { action: 'relocate' } })?.reason), /to/)
   })
 
   console.log('\n[3] 工具体真实执行')
@@ -187,6 +197,80 @@ try {
     assert.equal(second.created, false)
     assert.equal(await readFile(join(workspace, 'notes', 'a.md'), 'utf8'), '第一行\n第二行\n')
     await assert.rejects(run('controlled_write', { path: 'run.ps1', content: 'x' }), /禁止写入扩展名/)
+  })
+
+  console.log('\n[3b] 知识库换位置（kb_store）')
+
+  // A minimal knowledge base at the configured default, so relocation has
+  // something real to copy: one record and one journal file.
+  const storeDir = join(workspace, '.pseudo-agi')
+  await mkdir(join(storeDir, 'memory', 'semantic'), { recursive: true })
+  await writeFile(join(storeDir, 'memory', 'semantic', 'mem-test.md'), '---\nid: "mem-test"\n---\n# 测试\n', 'utf8')
+  await mkdir(join(storeDir, 'governance'), { recursive: true })
+  await writeFile(join(storeDir, 'governance', 'session-x.jsonl'), '{"kind":"step"}\n', 'utf8')
+  const movedParentDir = await mkdtemp(join(tmpdir(), 'pseudo-agi-moved-'))
+  movedParent = movedParentDir
+  const movedTo = join(movedParentDir, 'kb')
+
+  await check('status 报告配置默认位置与内容', async () => {
+    const value = await run('kb_store', { action: 'status' })
+    assert.equal(value.base, storeDir)
+    assert.equal(value.source, 'config')
+    assert.equal(value.files, 2)
+    assert.equal(value.layers.semantic, 1)
+    assert.equal(value.governanceFiles, 1)
+    assert.equal(value.restartRequired, false)
+  })
+
+  await check('relocate 复制、校验、再写指针，源默认保留', async () => {
+    const value = await run('kb_store', { action: 'relocate', to: movedTo })
+    assert.equal(value.copiedFiles, 2)
+    assert.equal(value.copiedBytes, value.bytes)
+    assert.equal(value.verified, true)
+    assert.equal(value.moved, false)
+    assert.equal(value.source, 'pointer')
+    assert.equal(value.base, movedTo)
+    assert.equal(value.restartRequired, true)
+    // Copy, not move: the old tree is still readable, so a rollback loses nothing.
+    assert.match(await readFile(join(storeDir, 'memory', 'semantic', 'mem-test.md'), 'utf8'), /mem-test/)
+    const pointer = JSON.parse(await readFile(join(storeDir, 'store.json'), 'utf8'))
+    assert.equal(pointer.root, movedTo)
+    assert.equal(pointer.movedFrom, storeDir)
+  })
+
+  await check('迁移后 status 从指针读新位置', async () => {
+    const value = await run('kb_store', { action: 'status' })
+    assert.equal(value.source, 'pointer')
+    assert.equal(value.base, movedTo)
+    assert.equal(value.files, 2)
+  })
+
+  await check('rollback 只改指针、不动数据', async () => {
+    const value = await run('kb_store', { action: 'rollback' })
+    assert.equal(value.restartRequired, true)
+    assert.equal(value.removedPointer, true)
+    assert.equal(value.base, storeDir)
+    const after = await run('kb_store', { action: 'status' })
+    assert.equal(after.source, 'config')
+    assert.equal(after.files, 2)
+  })
+
+  await check('重复回滚是幂等的', async () => {
+    const value = await run('kb_store', { action: 'rollback' })
+    assert.equal(value.restartRequired, false)
+    assert.match(value.note, /没有指针/)
+  })
+
+  await check('目标非空且未 overwrite 时拒绝，且指针不变', async () => {
+    const busy = await mkdtemp(join(tmpdir(), 'pseudo-agi-busy-'))
+    await writeFile(join(busy, 'keep.txt'), 'x', 'utf8')
+    await assert.rejects(run('kb_store', { action: 'relocate', to: busy }), /非空/)
+    assert.equal((await run('kb_store', { action: 'status' })).source, 'config')
+    await rm(busy, { recursive: true, force: true })
+  })
+
+  await check('搬到当前库内部被拒绝（防递归复制）', async () => {
+    await assert.rejects(run('kb_store', { action: 'relocate', to: join(storeDir, 'memory', 'inner') }), /递归复制/)
   })
 
   console.log('\n[4] 记忆闭环')
@@ -306,6 +390,7 @@ try {
     }
   }
   await rm(workspace, { recursive: true, force: true })
+  if (movedParent !== null) await rm(movedParent, { recursive: true, force: true })
 }
 
 console.log(`\n${failures.length === 0 ? 'PASS' : 'FAIL'}: ${checks} passed, ${failures.length} failed`)
