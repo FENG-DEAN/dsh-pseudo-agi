@@ -101,6 +101,9 @@ function parseRecord(text, path) {
     title: typeof field('title') === 'string' ? field('title') : '(untitled)',
     confidence: typeof field('confidence') === 'number' ? field('confidence') : null,
     updatedAt: typeof field('updatedAt') === 'string' ? field('updatedAt') : null,
+    // Present means another record replaced this one: still on disk as history,
+    // but no longer recalled or injected. The panel marks it instead of hiding it.
+    supersededBy: typeof field('supersededBy') === 'string' ? field('supersededBy') : null,
     path,
   }
 }

@@ -39,6 +39,7 @@ window.__ModuleLoader__.load({
         emptyBench: 'AGI_STATE.md not found.',
         tools: 'tools',
         generated: 'Snapshot',
+        superseded: 'replaced',
       },
       zh: {
         panel: '鲸鱼娘 AGI',
@@ -59,6 +60,7 @@ window.__ModuleLoader__.load({
         emptyBench: '未找到 AGI_STATE.md。',
         tools: '个工具',
         generated: '快照',
+        superseded: '已取代',
       },
     }
 
@@ -106,6 +108,8 @@ window.__ModuleLoader__.load({
 .pa-layer { flex: none; min-width: 74px; color: var(--dsw-alias-label-secondary); font-size: 11.5px; }
 .pa-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pa-meta { flex: none; color: var(--dsw-alias-label-secondary); font-size: 11px; }
+.pa-retired { opacity: .5; }
+.pa-retired .pa-name { text-decoration: line-through; }
 .pa-empty { color: var(--dsw-alias-label-secondary); font-size: 12px; padding: 6px 0; }
 .pa-pre { margin: 0; padding: 0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; color: var(--dsw-alias-label-primary); max-height: 320px; overflow: auto; }
 .pa-error { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--dsw-alias-state-error-primary); color: var(--dsw-alias-state-error-primary); font-size: 12px; }
@@ -218,11 +222,17 @@ window.__ModuleLoader__.load({
 
       const memoryRows = memories.length === 0
         ? h('div', { className: 'pa-empty' }, t('emptyMemories'))
-        : memories.slice(0, 12).map(record => h('div', { className: 'pa-row', key: record.id },
-          h('span', { className: 'pa-layer' }, record.layer),
-          h('span', { className: 'pa-name', title: record.title }, record.title),
-          h('span', { className: 'pa-meta' },
-            `${record.confidence === null ? '?' : record.confidence.toFixed(2)} · ${localTime(record.updatedAt, 'date')}`)))
+        : memories.slice(0, 12).map(record => {
+          const retired = typeof record.supersededBy === 'string' && record.supersededBy.length > 0
+          const meta = `${record.confidence === null ? '?' : record.confidence.toFixed(2)} · ${localTime(record.updatedAt, 'date')}`
+          return h('div', { className: retired ? 'pa-row pa-retired' : 'pa-row', key: record.id },
+            h('span', { className: 'pa-layer' }, record.layer),
+            h('span', {
+              className: 'pa-name',
+              title: retired ? `${record.title}\n${t('superseded')}: ${record.supersededBy}` : record.title,
+            }, record.title),
+            h('span', { className: 'pa-meta' }, retired ? `${meta} · ${t('superseded')}` : meta))
+        })
 
       const eventRows = events.length === 0
         ? h('div', { className: 'pa-empty' }, t('emptyEvents'))

@@ -116,6 +116,8 @@ try {
       assert.ok(typeof record.id === 'string' && record.id.length > 0)
       assert.ok(typeof record.layer === 'string')
       assert.ok(record.path.endsWith('.md'))
+      // `null` means live, a string means another record replaced it.
+      assert.ok(record.supersededBy === null || typeof record.supersededBy === 'string', 'supersededBy must be exposed')
     }
     const sorted = [...memories].sort((left, right) =>
       String(right.updatedAt ?? '').localeCompare(String(left.updatedAt ?? '')))
