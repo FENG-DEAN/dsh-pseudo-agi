@@ -9,6 +9,7 @@
  * @module @pseudo-agi/panel
  */
 
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
@@ -28,6 +29,22 @@ const LAYERS = ['working', 'episodic', 'semantic', 'procedural']
 const MAX_TEXT = 4000
 const MAX_EVENTS = 20
 const MAX_MEMORIES = 40
+
+/**
+ * The Host Connection's browser-session credential. Its secret signs the
+ * `dsh-auth-<hash>` cookie that `dsh web` mints after the launch-token
+ * handshake, and the key's runtime form is the joined `<scope>/<id>` string, so
+ * verifying a browser request needs no import from the owning package.
+ *
+ * Why the panel verifies it itself: a plugin prefix route is served by nothing
+ * that checks this cookie — only the Host Connection's own index and API
+ * carriers authenticate — so without this check any local caller could read the
+ * whole state file.
+ */
+const AUTH_RECORD_KEY = 'client-connection/browser-session'
+const AUTH_COOKIE_PREFIX = 'dsh-auth-'
+const AUTH_SECRET_BYTES = 32
+const AUTH_COOKIE_BASE64URL = /^[A-Za-z0-9_-]*$/
 
 /**
  * Assert the config the panel depends on.
@@ -204,6 +221,109 @@ async function collect(ctx, root) {
 }
 
 /**
+ * Encode bytes the way the Host Connection encodes cookie names and values.
+ * @param {Buffer} value bytes to encode.
+ * @returns {string} unpadded base64url.
+ */
+function base64Url(value) {
+  return value.toString('base64').replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+}
+
+/**
+ * Decode canonical unpadded base64url.
+ * @param {string} text encoded value.
+ * @returns {Buffer|undefined} the bytes, or undefined when not canonical.
+ */
+function unbase64Url(text) {
+  if (typeof text !== 'string' || text.length % 4 === 1 || !AUTH_COOKIE_BASE64URL.test(text)) return undefined
+  const padding = '='.repeat((4 - (text.length % 4)) % 4)
+  const bytes = Buffer.from(text.replaceAll('-', '+').replaceAll('_', '/') + padding, 'base64')
+  return base64Url(bytes) === text ? bytes : undefined
+}
+
+/**
+ * Read one named cookie without implementing general Cookie decoding.
+ * @param {string} header raw `cookie` header value.
+ * @param {string} name exact cookie name.
+ * @returns {string|undefined} the value, or undefined when absent.
+ */
+function cookieValue(header, name) {
+  for (const segment of header.split(';')) {
+    const at = segment.indexOf('=')
+    if (at === -1 || segment.slice(0, at).trim() !== name) continue
+    return segment.slice(at + 1).trim()
+  }
+  return undefined
+}
+
+/**
+ * Load the secret that signs this Harness home's browser-session cookie.
+ * @param {object} ctx plugin context.
+ * @returns {Promise<Buffer|undefined>} the secret, or undefined when no host
+ *   mints cookies here (no credentials service, no record, unknown format).
+ */
+async function browserSessionSecret(ctx) {
+  const credentials = ctx.get('credentials', false)
+  if (credentials === undefined || typeof credentials.readRecord !== 'function') return undefined
+  let record
+  try {
+    record = await credentials.readRecord(AUTH_RECORD_KEY)
+  } catch {
+    return undefined
+  }
+  if (record === undefined || record.kind !== 'grant' || record.payload?.version !== 1) return undefined
+  const secret = unbase64Url(record.payload.secret)
+  return secret !== undefined && secret.byteLength === AUTH_SECRET_BYTES ? secret : undefined
+}
+
+/**
+ * Verify one browser-session cookie against the Harness secret.
+ * @param {string} value raw cookie value: `v<version>.<payload>.<signature>`.
+ * @param {Buffer} secret signing secret bytes.
+ * @param {string} authority the request `host`, which binds cookie to origin.
+ * @returns {boolean} true only for an unexpired cookie signed by this Harness.
+ */
+function cookieAuthentic(value, secret, authority) {
+  const parts = value.split('.')
+  if (parts.length !== 3) return false
+  const [version, body, encoded] = parts
+  if (version !== 'v1' && version !== 'v2') return false
+  const expected = createHmac('sha256', secret).update(body).digest()
+  const actual = unbase64Url(encoded)
+  if (actual === undefined || actual.byteLength !== expected.byteLength
+    || !timingSafeEqual(actual, expected)) return false
+  const payloadBytes = unbase64Url(body)
+  if (payloadBytes === undefined) return false
+  let payload
+  try {
+    payload = JSON.parse(payloadBytes.toString('utf8'))
+  } catch {
+    return false
+  }
+  if (payload === null || typeof payload !== 'object' || payload.authority !== authority) return false
+  if (!Number.isSafeInteger(payload.issuedAt) || !Number.isSafeInteger(payload.expiresAt)) return false
+  const now = Date.now()
+  return payload.issuedAt <= now && payload.expiresAt > now
+}
+
+/**
+ * Decide whether one request may read panel state.
+ * @param {object} req incoming request.
+ * @param {Buffer|undefined} secret signing secret, absent when this host mints no cookies.
+ * @returns {'allowed'|'denied'|'unverifiable'} the verdict.
+ */
+function authorize(req, secret) {
+  if (secret === undefined) return 'unverifiable'
+  const authority = req.headers.host
+  if (typeof authority !== 'string' || authority.length === 0) return 'denied'
+  const header = req.headers.cookie
+  if (typeof header !== 'string') return 'denied'
+  const name = AUTH_COOKIE_PREFIX + base64Url(createHash('sha256').update(authority).digest())
+  const value = cookieValue(header, name)
+  return value !== undefined && cookieAuthentic(value, secret, authority) ? 'allowed' : 'denied'
+}
+
+/**
  * Mount the panel's read-only route.
  * @param {object} ctx plugin context.
  * @param {object} config plugin config with `workspaceRoot`.
@@ -211,9 +331,16 @@ async function collect(ctx, root) {
 export function apply(ctx, config) {
   validateConfig(config)
   const root = resolve(config.workspaceRoot)
+  // Resolved once per activation: the cookie secret is durable for this Harness home.
+  const secretReady = browserSessionSecret(ctx).catch((error) => {
+    ctx.logger.warn(`pseudo-agi-panel: browser-session secret unavailable: ${error instanceof Error ? error.message : String(error)}`)
+    return undefined
+  })
+  let warnedUnverifiable = false
 
   /**
-   * Answer one panel request. Only GET /state exists; everything else 404s.
+   * Answer one panel request. Every request must carry the Harness
+   * browser-session cookie; only GET /state exists; everything else 404s.
    * @param {import('node:http').IncomingMessage} req incoming request.
    * @param {import('node:http').ServerResponse} res response to own.
    */
@@ -228,6 +355,15 @@ export function apply(ctx, config) {
       res.end(body)
     }
     try {
+      const verdict = authorize(req, await secretReady)
+      if (verdict === 'denied') {
+        send(401, { ok: false, error: 'authentication required' })
+        return
+      }
+      if (verdict === 'unverifiable' && !warnedUnverifiable) {
+        warnedUnverifiable = true
+        ctx.logger.warn('pseudo-agi-panel: this host mints no browser-session cookie; serving state without authentication')
+      }
       if (req.method !== 'GET') {
         send(405, { ok: false, error: 'method not allowed' })
         return

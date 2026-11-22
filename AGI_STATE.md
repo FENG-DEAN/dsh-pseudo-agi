@@ -2,7 +2,7 @@
 
 > 由模型（意识）在开工/收工时维护：这是"我正在做什么"，不是事实记忆。
 > 事实记忆在 `.pseudo-agi/memory/`，用 `memory_recall` 取；工具轨迹在 `.pseudo-agi/governance/*.jsonl`。
-> 最近更新：2026-11-22（五层 + 管理面板真机验收后）
+> 最近更新：2026-11-22（面板路由鉴权修复后，待重启验证）
 
 ## 当前目标
 
@@ -33,13 +33,13 @@
 
 ## 下一步（按优先级）
 
-1. **面板路由鉴权**：`GET /pseudo-agi/api/state` 无鉴权返回 200（含 `AGI_STATE.md` 全文与全部记忆标题），而 GUI 首页 `/` 返 401。先查清「prefix 路由不走 auth」是 DSH 既定契约还是缺口，再决定补鉴权还是记录为设计如此。
-2. **补充文档**：把"写盘必须显式 workspaceRoot"这条教训写进 `docs/spec-compliance.md` 缺陷清单；把 `sidebar.panellist` slot 约定补进文档（`kb_search` 扫 7 个文件未找到）。
+1. **重启验证面板鉴权真机生效**（未验证）：本轮已改 `pseudo-agi-panel` 让它自己验 `dsh-auth-*` cookie，单测 14/14 过，但插件跑在宿主进程里，要重启 desktop profile 才加载新代码。重启后应确认：无 cookie 的 `curl` → 401；浏览器里面板仍能刷出数据（同源 fetch 自动带 cookie）。
+2. **补充文档**：把"写盘必须显式 workspaceRoot"这条教训写进 `docs/spec-compliance.md` 缺陷清单；把 `sidebar.panellist` slot 约定补进文档（`kb_search` 扫 7 个文件未找到）；把"插件 prefix 路由不走 Host 鉴权"写进架构文档。
 3. **跨会话连续性**：下次冷启动只靠本文件 + procedural 记忆能否恢复状态——已部分验证两次。
 4. **评估 bundle 分发**：`pnpm pack` + `file:` 装一次，验证"npm 包 + cordis.patch.yml"这条分发路径（当前是 `link:` 五包）。
 5. **沙箱**（见待决 2）：`ctx.sandbox` 仍未接。
 
-已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到。
+已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到；面板路由鉴权已实现（`pseudo-agi-panel` 验 Host Connection 的签名 cookie）。
 
 ## 阻塞 / 待决
 
@@ -108,3 +108,20 @@
 - **`toolCount: 15` 的解释**：取自宿主 `ctx.get('tools').definitions().length`（`index.js:186-188`），是全部工具注册表，与伪AGI 自有的 8 个不是同一口径，两个数字都不算错。
 - **profile 物证**：`cordis.patch.yml:37-84` 五层 insert 齐全；第 35-36 行「控制器与治理层先不启用」是过时注释，实际 scaffold 与 governance 都已启用并验证工作。
 - **新发现（未决，已列入下一步 1）**：GUI 首页 `/` 返 401，而 `/pseudo-agi/api/state` 返 200 无鉴权，会把 `AGI_STATE.md` 全文和全部记忆标题吐给任何本机请求方。需查清是否为 DSH prefix 路由的既定契约。
+
+### 2026-11-22 · 面板路由鉴权修复（单测过，真机待重启验证）
+
+**根因（源码级，不是推断）**——从 `app.asar` 解出源码后确认：
+- `dsh-host-webserver` 的 `register()` 只登记路由，签名里**没有任何 auth 参数**（`src/index.ts:445`），所以插件 prefix 路由天然不在 Host 鉴权覆盖范围内。
+- 全宿主唯一的 401 文案来自 `dsh-client-connection/src/browser-auth.ts:385`（`writeUnauthorized`），它只挂在 Host Connection 自己的 index / connect / API 载体上。
+- 鉴权模型：`dsh web` 打印的 URL 带一次性 `?token=`；访问 `/` 时 `authorizeIndex` 校验 launch token 并铸签名 cookie `dsh-auth-<base64url(sha256(authority))>`，值为 `v<ver>.<body>.<HMAC-SHA256(secret)>`、`HttpOnly; SameSite=Strict`；secret 存在 credentials，key 为 `client-connection/browser-session`（`browser-auth.ts:14,244-305`）。
+- 顺带排除：`ctx.authorization` 与 HTTP 鉴权无关，它是"需要人类交互拿凭据"的 OAuth 流接缝。
+
+**修法**：panel 自己验 cookie，不改 DSH、不复制其内部类。
+- `ctx.get('credentials').readRecord('client-connection/browser-session')` 取同一 secret（该 key 运行时形态就是 `<scope>/<id>` 字符串，故无需 import 内部包）。
+- `createHmac` + `timingSafeEqual` 验签名，并校验 `authority === req.headers.host`、`issuedAt <= now < expiresAt`。
+- 拿不到 secret（最小宿主、单测环境）时放行且只 warn 一次——否则会把面板锁死。
+
+**验证**：`node scripts/panel-test.mjs` → **14/14**（新增 5 例：有效 cookie→200、无 cookie→401、伪造签名→401、过期→401、authority 不符→401）；`smoke.mjs` 25/25；`profile-check.mjs` 12/12。
+
+**未验证**：真机行为要重启后才知道——改的是 `link:` 包源码，宿主进程此刻仍持有旧模块，`/state` 现在应仍返回 200。

@@ -10,6 +10,7 @@
  */
 
 import assert from 'node:assert/strict'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 
@@ -57,7 +58,7 @@ app.plugin({ name: 'fake-web', apply(ctx) { ctx.provide('webServer', fakeWebServ
 const fork = app.plugin(panel, { workspaceRoot: 'D:/Doc/AIDoc/Dsh_dev/dsh_agi_dev' })
 
 /** Call the handler and resolve with the response it produces. */
-async function call(method, url) {
+async function invoke(handler, method, url, headers = {}) {
   const response = {
     status: 0,
     headers: {},
@@ -72,9 +73,14 @@ async function call(method, url) {
     },
   }
   const done = new Promise(resolve => { response.done = resolve })
-  await routeHandler({ method, url }, response)
+  await handler({ method, url, headers }, response)
   await done
   return response
+}
+
+/** Call the unauthenticated route captured from the first app. */
+async function call(method, url, headers = {}) {
+  return invoke(routeHandler, method, url, headers)
 }
 
 try {
@@ -142,11 +148,86 @@ try {
     assert.equal(response.status, 405)
   })
 
-  console.log('\n[4] 卸载后路由撤销')
+  console.log('\n[4] 浏览器会话鉴权')
+
+  // A second app with a real secret: the panel must verify the signed cookie itself.
+  const secretBytes = randomBytes(32)
+  const b64url = value => value.toString('base64')
+    .replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+  const authority = '127.0.0.1:58891'
+  const credentialRecord = { kind: 'grant', payload: { version: 1, secret: b64url(secretBytes) } }
+  const fakeCredentials = {
+    async readRecord(key) {
+      return key === 'client-connection/browser-session' ? credentialRecord : undefined
+    },
+  }
+  function mintCookie(secret, host, { expiresIn = 3_600_000 } = {}) {
+    const now = Date.now()
+    const payload = { version: 1, authority: host, issuedAt: now, expiresAt: now + expiresIn }
+    const body = b64url(Buffer.from(JSON.stringify(payload), 'utf8'))
+    const signature = b64url(createHmac('sha256', secret).update(body).digest())
+    const name = `dsh-auth-${b64url(createHash('sha256').update(host).digest())}`
+    return `${name}=v1.${body}.${signature}`
+  }
+
+  let authedHandler = null
+  const authedWebServer = {
+    register(options) {
+      authedHandler = options.handler
+      return () => { authedHandler = null }
+    },
+  }
+  const app2 = new Context()
+  app2.plugin({ name: 'fake-web-2', apply(ctx) { ctx.provide('webServer', authedWebServer) } })
+  app2.plugin({ name: 'fake-credentials', apply(ctx) { ctx.provide('credentials', fakeCredentials) } })
+  const fork2 = app2.plugin(panel, { workspaceRoot: 'D:/Doc/AIDoc/Dsh_dev/dsh_agi_dev' })
+  await waitFor('authenticated route', () => authedHandler !== null)
+
+  await check('带有效 cookie → 200', async () => {
+    const response = await invoke(authedHandler, 'GET', '/pseudo-agi/api/state', {
+      host: authority,
+      cookie: mintCookie(secretBytes, authority),
+    })
+    assert.equal(response.status, 200)
+    assert.equal(JSON.parse(response.body).ok, true)
+  })
+
+  await check('无 cookie → 401', async () => {
+    const response = await invoke(authedHandler, 'GET', '/pseudo-agi/api/state', { host: authority })
+    assert.equal(response.status, 401)
+    assert.equal(JSON.parse(response.body).ok, false)
+  })
+
+  await check('伪造签名 → 401', async () => {
+    const response = await invoke(authedHandler, 'GET', '/pseudo-agi/api/state', {
+      host: authority,
+      cookie: mintCookie(randomBytes(32), authority),
+    })
+    assert.equal(response.status, 401)
+  })
+
+  await check('过期 cookie → 401', async () => {
+    const response = await invoke(authedHandler, 'GET', '/pseudo-agi/api/state', {
+      host: authority,
+      cookie: mintCookie(secretBytes, authority, { expiresIn: -1_000 }),
+    })
+    assert.equal(response.status, 401)
+  })
+
+  await check('cookie 绑定的 authority 与请求 host 不符 → 401', async () => {
+    const response = await invoke(authedHandler, 'GET', '/pseudo-agi/api/state', {
+      host: authority,
+      cookie: mintCookie(secretBytes, '127.0.0.1:1'),
+    })
+    assert.equal(response.status, 401)
+  })
+
+  console.log('\n[5] 卸载后路由撤销')
 
   await check('dispose 后 handler 清空', async () => {
     await fork.dispose()
-    await waitFor('route gone', () => routeHandler === null)
+    await fork2.dispose()
+    await waitFor('route gone', () => routeHandler === null && authedHandler === null)
   })
 } finally {
   try { await fork.dispose() } catch { /* already disposed */ }
