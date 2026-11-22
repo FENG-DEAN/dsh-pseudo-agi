@@ -179,3 +179,11 @@
 - **测试**：smoke 30 → **35/35**，新增 5 条——默认扫描隐藏旧记录、旧记录留存且带 `supersededBy`、被取代记录不再被召回、候选 `supersedes` 往返序列化、指向不存在 id 不报错。
 - **未做**：时间序/置信度自动裁决；面板尚未标注 superseded（已列下一步 3）。
 - 说明：本轮把两条互相矛盾的记忆合并成了 `mem-20261122-0d073194`、手工 `memory_forget` 掉 `mem-20261122-9d61328e`——那正是在本机制出现之前的手工做法，现在有机制替代了。
+
+### 2026-11-22 · 面板时间改为本地时区渲染（已由用户确认）
+
+- **现象**：面板事件列表显示 `08:58`，而本地时间（UTC+8）是 `16:5x`，差 8 小时。
+- **根因**：`packages/pseudo-agi-panel/client.js` 用 `String(record.at).slice(11, 19)` 和 `String(record.updatedAt).slice(0, 10)` **直接截 ISO 字符串**，等于渲染 UTC。记忆那栏只显示日期，而 UTC 与本地都在 11-22，所以当时没露馅——但 UTC 23:00 之后的记录会显示成前一天。
+- **修法**：新增 `localTime(value, part)`，用 `toLocaleDateString()` / `toLocaleTimeString(undefined, { hour12: false })` 按浏览器时区渲染；无效时间戳回退到原始片段而不是抛错。
+- **验证**：本地按 `Asia/Hong_Kong` 算得 `16:58:02`（改前为 `08:58:02`）；`node --check` 通过；用户刷新页面后确认显示正确。
+- **顺带记下**：改这行时我漏了一个收尾括号，`node --check` 当场报 `missing ) after argument list`——JS 文件改完先做语法检查，比在浏览器里看白屏强。
