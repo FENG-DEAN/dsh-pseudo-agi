@@ -562,10 +562,15 @@ export class MemoryStore {
 /**
  * Find the recalled pairs that plausibly disagree.
  *
- * The test is deliberately shallow and explainable: two hits sharing at least
- * one tag AND overlapping by two or more title words are reported as a pair
- * worth a second look. It never hides or reorders anything — deciding which of
- * the two is right belongs to the reader, not to the store.
+ * The test is deliberately shallow and explainable: same layer, at least TWO
+ * shared tags, and two or more overlapping title words. It never hides or
+ * reorders anything — deciding which of the two is right belongs to the reader.
+ *
+ * Both floors came from real false positives. One shared tag fires on mere
+ * topical proximity (two unrelated events both tagged `真机`). Comparing across
+ * layers fires on a design note and the event that prompted it, which cannot
+ * contradict each other by construction: an episodic record says what happened,
+ * a semantic one says what holds.
  *
  * @param hits - the records being returned, in ranked order.
  * @returns the suspicious pairs, as ids plus the tags they share.
@@ -578,8 +583,9 @@ function conflictsOf(hits: readonly RecallHit[]): RecallConflict[] {
       const a = hits[left]?.record
       const b = hits[right]?.record
       if (a === undefined || b === undefined) continue
+      if (a.layer !== b.layer) continue
       const sharedTags = a.tags.filter(tag => b.tags.includes(tag))
-      if (sharedTags.length === 0) continue
+      if (sharedTags.length < 2) continue
       const bWords = wordsOf(b.title)
       const overlap = [...wordsOf(a.title)].filter(word => bWords.has(word))
       if (overlap.length < 2) continue

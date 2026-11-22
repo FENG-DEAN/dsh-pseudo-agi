@@ -432,14 +432,14 @@ try {
 
   const conflictStore = new MemoryStore(join(workspace, '.pseudo-agi', 'memory-conflict'))
 
-  await check('同标签且标题重叠的两条被标为疑似冲突', async () => {
+  await check('共享两个标签且标题重叠的两条被标为疑似冲突', async () => {
     await conflictStore.writeRecord({
       layer: 'semantic',
       title: '面板路由无鉴权',
       body: '面板接口无凭据即返回 200。',
       evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
       confidence: 0.8,
-      tags: ['panel'],
+      tags: ['panel', '路由'],
     })
     await conflictStore.writeRecord({
       layer: 'semantic',
@@ -447,7 +447,7 @@ try {
       body: '面板接口校验签名 cookie，无 cookie 返回 401。',
       evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
       confidence: 0.95,
-      tags: ['panel'],
+      tags: ['panel', '路由'],
     })
     const result = await conflictStore.recall('面板路由', { limit: 5, minScore: 1, minCoverage: 0.1 })
     assert.equal(result.hits.length, 2, 'both records must still be returned')
@@ -455,7 +455,7 @@ try {
     assert.ok(result.conflicts[0].sharedTags.includes('panel'))
   })
 
-  await check('标签不相交时不报冲突', async () => {
+  await check('只共享一个标签时不报冲突（真机曾因此误报）', async () => {
     const other = new MemoryStore(join(workspace, '.pseudo-agi', 'memory-conflict-2'))
     await other.writeRecord({
       layer: 'semantic',
@@ -463,7 +463,7 @@ try {
       body: '面板接口无凭据即返回 200。',
       evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
       confidence: 0.8,
-      tags: ['panel'],
+      tags: ['panel', '路由'],
     })
     await other.writeRecord({
       layer: 'semantic',
@@ -471,9 +471,32 @@ try {
       body: '面板接口校验签名 cookie。',
       evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
       confidence: 0.9,
-      tags: ['auth'],
+      tags: ['panel', 'auth'],
     })
     const result = await other.recall('面板路由', { limit: 5, minScore: 1, minCoverage: 0.1 })
+    assert.equal(result.hits.length, 2)
+    assert.equal(result.conflicts.length, 0)
+  })
+
+  await check('跨层不报冲突（事件记录与设计原则不会互相矛盾）', async () => {
+    const cross = new MemoryStore(join(workspace, '.pseudo-agi', 'memory-conflict-3'))
+    await cross.writeRecord({
+      layer: 'semantic',
+      title: '面板路由无鉴权',
+      body: '面板接口无凭据即返回 200。',
+      evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
+      confidence: 0.8,
+      tags: ['panel', '路由'],
+    })
+    await cross.writeRecord({
+      layer: 'episodic',
+      title: '面板路由已鉴权',
+      body: '当天完成鉴权改造。',
+      evidence: [{ kind: 'file', ref: 'docs/architecture.md' }],
+      confidence: 0.9,
+      tags: ['panel', '路由'],
+    })
+    const result = await cross.recall('面板路由', { limit: 5, minScore: 1, minCoverage: 0.1 })
     assert.equal(result.hits.length, 2)
     assert.equal(result.conflicts.length, 0)
   })
