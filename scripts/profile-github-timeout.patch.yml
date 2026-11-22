@@ -1,0 +1,7 @@
+
+# 由 scripts/fix-profile-store.ps1 追加：GitHub 仓库探测超时。
+# 默认 5000ms；代理链路上 git ls-remote 可能更慢，会被误判为 failedAt: spec-host。
+- id: plugin-manager
+  name: '@deepseek-ai/dsh-plugin-manager'
+  config:
+    githubConnectionTimeoutMs: 20000
