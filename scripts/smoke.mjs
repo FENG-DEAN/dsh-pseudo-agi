@@ -24,6 +24,7 @@ import {
 import { fitWithinBudget, estimateTokens } from '../packages/pseudo-agi-memory/lib/budget.js'
 import { Config as ScaffoldConfig, disciplineText, validateConfig as validateScaffoldConfig } from '../packages/pseudo-agi-scaffold/lib/config.js'
 import { denyReason, isWritable, isWithin, resolveInside } from '../packages/pseudo-agi-tools/lib/workspace.js'
+import { createWriteGuard } from '../packages/pseudo-agi-tools/lib/policy.js'
 import { JsonlJournal, MetricsBook } from '../packages/pseudo-agi-governance/lib/metrics.js'
 
 let checks = 0
@@ -274,6 +275,37 @@ try {
       isWritable({ ...toolsConfig, writeRoots: ['docs'] }, workspace, join(workspace, 'src', 'x.md')),
       false,
     )
+  })
+
+  console.log('\n[6b] 写入遵守统一文件策略（ctx.sandboxPolicy）')
+
+  const writeCall = path => ({ name: 'controlled_write', arguments: { path }, agent: undefined })
+
+  await check('read-only 策略下 controlled_write 被拒绝', () => {
+    const guard = createWriteGuard(toolsConfig, workspace, () => 'read-only')
+    assert.match(guard(writeCall('docs/ok.md')) ?? '', /read-only/)
+  })
+
+  await check('workspace-write 与 danger-full-access 下正常写入放行', () => {
+    for (const mode of ['workspace-write', 'danger-full-access']) {
+      const guard = createWriteGuard(toolsConfig, workspace, () => mode)
+      assert.equal(guard(writeCall('docs/ok.md')), undefined, mode)
+    }
+  })
+
+  await check('read-only 不改变越界判定：围栏仍然生效', () => {
+    const guard = createWriteGuard(toolsConfig, workspace, () => 'danger-full-access')
+    assert.match(guard(writeCall('../escape.md')) ?? '', /路径越界/)
+  })
+
+  await check('无策略服务时保持原行为', () => {
+    const guard = createWriteGuard(toolsConfig, workspace)
+    assert.equal(guard(writeCall('docs/ok.md')), undefined)
+  })
+
+  await check('策略只作用于本插件拥有的写工具', () => {
+    const guard = createWriteGuard(toolsConfig, workspace, () => 'read-only')
+    assert.equal(guard({ name: 'kb_read', arguments: { path: 'docs/ok.md' }, agent: undefined }), undefined)
   })
 
   console.log('\n[7] 治理指标与审计日志')

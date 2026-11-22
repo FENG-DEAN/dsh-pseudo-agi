@@ -34,6 +34,7 @@
 ## 下一步（按优先级）
 
 1. **确认浏览器面板在新鉴权下仍可用**（待用户确认）：真机 401 已成立；`client.js` 的 fetch 默认 `same-origin` 会带 cookie，逻辑上不受影响，但 UI 未亲眼确认。若面板空白，`git revert c9be26b` 即回滚。
+2. **真机验证 `controlled_write` 的 read-only 拒绝**（未验证）：单测已覆盖，但当前会话策略是 `danger-full-access`，行为差异不可见。要验证需把会话策略切到 `read-only` 后试写；注意切换会影响该会话全部受限能力（含 `pwsh`），验证完须切回。
 2. **补充文档**：把"写盘必须显式 workspaceRoot"这条教训写进 `docs/spec-compliance.md` 缺陷清单；把 `sidebar.panellist` slot 约定补进文档（`kb_search` 扫 7 个文件未找到）；把"插件 prefix 路由不走 Host 鉴权"写进架构文档。
 3. **跨会话连续性**：下次冷启动只靠本文件 + procedural 记忆能否恢复状态——已部分验证两次。
 4. **评估 bundle 分发**：`pnpm pack` + `file:` 装一次，验证"npm 包 + cordis.patch.yml"这条分发路径（当前是 `link:` 五包）。
@@ -45,7 +46,7 @@
 
 - 无阻塞。
 - 待决 1：`bundle` 分发路径未验证（`workspace:^` 依赖在 profile 里解析不了，所以现在装的是四个独立包）。
-- 待决 2：沙箱（`ctx.sandbox`）仍未接；当前只有字符串层面的路径围栏。原方案要求"高危操作强制沙箱"，这是唯一完全没动的部分。
+- 待决 2（**已修，待真机确认**）：沙箱机制本来就在——`dsh-sandbox` / `dsh-sandbox-policy` 由 `dsh-web-app` bundle 加载，会话策略当前是 `danger-full-access`（系统提示原话："The DSH file sandbox does not restrict file modifications"）。真正的缺口不是"没接沙箱"，而是 **`controlled_write` 绕过了统一策略**：DSH 的 `write`/`edit`（走 `ctx.fs`）与 `pwsh`（走 `ctx.shell`）都受策略约束，只有我们自己实现的写工具不受。修法见验证记录。
 
 ## 运行环境
 
@@ -141,3 +142,14 @@
 - **第一次失败的真正原因**（修正上一节的推断）：不是加载时序，而是**插件自身的 ctx 看不到由兄弟插件提供的服务**。本地实验"credentials 先/后于 panel"都返回 401，恰恰说明顺序无关；换成 `ctx.inject(['credentials'], cb)` 在依赖作用域里读之后才成功。
 - **浏览器端**：`packages/pseudo-agi-panel/client.js:104` 的 `fetch(url, { headers: { accept } })` 未设 `credentials`，默认 `same-origin` 会带 cookie，故面板逻辑上不受影响（**UI 仍待用户确认**）。
 - **参照插件对照**：`@local/dsh-preset-editor`（Junction → `D:\Doc\AIDoc\Dsh_dev\preset-editor`）同样用 `webServer.register({ kind: 'prefix' })` 且**不做任何鉴权**（`index.js:261-266`）；它的 `inject = ['agentPresets','webServer']` 只是必需依赖声明。结论：插件 prefix 路由无鉴权是生态常态，本 panel 的自验 cookie 比参考插件更严格。
+
+### 2026-11-22 · 按三元设想收口（方案 A）
+
+起因：用户指出上一轮偏离了目标——把「内驱 / 定时任务」当成三元（意识/记忆/手脚）的缺口去补，而它根本不在这三元里。决定严格按原设想收口。
+
+- **撤销定时任务入口**：`C:\Users\FDA\.dsh\preset-editor\presets.json` 移除 `@deepseek-ai/dsh-tool-schedule`，文件字节数回到 **690**，与改动前完全一致；全程**未创建任何定时任务**（`schedule_list` 始终 `total:0`）。
+- **记忆冲突消解**：`memory_forget mem-20261122-9d61328e`。该条两个断言均已失效——「面板无凭据即 200」（已修成 401）、「是否契约未决」（已由 `mem-20261122-0d073194` 确证）。留 `mem-20261122-0d073194` 作唯一有效版本。
+- **手脚缺口重新定性**：`ctx.sandbox` 是**子进程**沙箱（约束 bash/pwsh 的文件访问），不是插件写盘 API；`dsh-fs-sandbox` 围栏的是 `ctx.fs` 的五个写操作。沙箱机制本就在（web-app bundle 加载了 `dsh-sandbox` + `dsh-sandbox-policy`），当前会话策略是 `danger-full-access`。**真正的缺口是 `controlled_write` 绕过统一策略**。
+- **修法**：`createWriteGuard` 增加第三个可选参数 `modeOf(exec)`；`apply()` 用 `ctx.inject(['sandboxPolicy'], cb)`（非 `ctx.get`，见 `mem-20261122-d09e910e`）拿到服务，在 guard 里 `policy.resolve({ session: exec.agent })` 取 `mode`，`read-only` 即拒绝写入。`workspace-write` 无需额外检查——guard 原本就把写入锁在 `config.workspaceRoot` 内，比策略根更严。
+- **单测**：`smoke.mjs` 25 → **30/30**，新增 5 条：read-only 拒绝、workspace-write/danger-full-access 放行、策略不削弱越界判定、无策略服务时保持原行为、策略只作用于本插件拥有的写工具。`panel-test` 14/14 未回归。
+- **未验证**：真机 `read-only` 拒绝——当前会话策略是 `danger-full-access`，差异不可见；验证需切策略，而切换会影响该会话全部受限能力（含 `pwsh`），故留作待办而非擅自执行。

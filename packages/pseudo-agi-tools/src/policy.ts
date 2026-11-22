@@ -23,15 +23,41 @@ export const WRITE_TOOL = 'controlled_write'
 /** Every tool this plugin owns; the guard ignores everything else. */
 export const OWNED_TOOLS: ReadonlySet<string> = new Set(['kb_search', 'kb_read', WRITE_TOOL])
 
+/** The shared file-operation modes owned by `ctx.sandboxPolicy`. */
+export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
+
+/**
+ * Resolve the effective file policy for one call.
+ * @param exec - the pending call, whose `agent` is the Session that owns it.
+ * @returns the mode, or undefined when this deployment mounts no policy service.
+ */
+export type SandboxModeOf = (exec: Readonly<ToolExecution>) => SandboxMode | undefined
+
 /**
  * Build the synchronous write guard.
+ *
+ * The guard is the last word on a call, so it also carries the shared policy:
+ * `read-only` refuses every write here, which keeps this tool from becoming a
+ * back door around the mode the session was given. `workspace-write` needs no
+ * extra check because the containment test below uses the stricter of the two
+ * roots (this plugin's configured root), and `danger-full-access` removes the
+ * fence by definition.
+ *
  * @param config - deployment configuration.
  * @param root - absolute workspace root.
- * @returns a guard that denies out-of-root, denied-segment, and denied-extension writes.
+ * @param modeOf - effective file policy per call; omitted when unmounted.
+ * @returns a guard that denies out-of-policy, out-of-root, denied-segment, and denied-extension writes.
  */
-export function createWriteGuard(config: ToolsConfig, root: string): ToolGuard {
+export function createWriteGuard(
+  config: ToolsConfig,
+  root: string,
+  modeOf: SandboxModeOf = () => undefined,
+): ToolGuard {
   return (exec: Readonly<ToolExecution>): string | undefined => {
     if (exec.name !== WRITE_TOOL) return undefined
+    if (modeOf(exec) === 'read-only') {
+      return '当前会话文件策略为 read-only，controlled_write 拒绝写入。切换策略或在其他模式下重试。'
+    }
     const args = exec.arguments as { path?: unknown } | undefined
     if (args === undefined || typeof args.path !== 'string') {
       return 'controlled_write 缺少字符串 path 参数'
