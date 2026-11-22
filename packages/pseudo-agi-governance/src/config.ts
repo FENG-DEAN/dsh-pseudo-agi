@@ -9,9 +9,9 @@ import z from '@deepseek-ai/schemastery'
 /** Plugin configuration. */
 export interface GovernanceConfig {
   /**
-   * Base directory that `root` resolves against. Defaults to the process cwd,
-   * but the host process usually runs somewhere else (and often somewhere
-   * read-only), so a real deployment must set this explicitly.
+   * Base directory that `root` resolves against. Empty means the platform default
+   * (`<home>/dsh-pseudo-agi`); never the process cwd, which is the host's install
+   * directory and may not be writable.
    */
   readonly workspaceRoot: string
   /**
@@ -36,7 +36,7 @@ export interface GovernanceConfig {
 
 /** Schemastery schema; invalid config fails at load time. */
 export const Config: z<GovernanceConfig> = z.object({
-  workspaceRoot: z.string().default('.'),
+  workspaceRoot: z.string().default(''),
   storeRoot: z.string().default('.pseudo-agi'),
   root: z.string().default('.pseudo-agi/governance'),
   maxSessions: z.number().default(256),
@@ -52,7 +52,6 @@ export function validateConfig(config: GovernanceConfig): void {
   const fail = (message: string): never => {
     throw new Error(`pseudo-agi-governance: ${message}`)
   }
-  if (config.workspaceRoot.trim().length === 0) fail('config.workspaceRoot must not be empty')
   if (config.storeRoot.trim().length === 0) fail('config.storeRoot must not be empty')
   if (config.root.trim().length === 0) fail('config.root must not be empty')
   for (const [name, value] of [

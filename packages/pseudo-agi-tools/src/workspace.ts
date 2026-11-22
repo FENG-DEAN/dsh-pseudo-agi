@@ -10,6 +10,7 @@
  */
 
 import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { resolveWorkspaceRoot } from '@pseudo-agi/store'
 import type { ToolsConfig } from './config.js'
 
 /** Whether two paths are compared case-insensitively on this platform. */
@@ -43,9 +44,9 @@ export function isWithin(root: string, target: string): boolean {
   return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
 }
 
-/** Absolute workspace root for one deployment. */
+/** Absolute workspace root for one deployment; an empty setting means the platform default. */
 export function workspaceRoot(config: ToolsConfig): string {
-  return resolve(config.workspaceRoot)
+  return resolveWorkspaceRoot(config.workspaceRoot)
 }
 
 /**

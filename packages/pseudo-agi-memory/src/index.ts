@@ -25,7 +25,7 @@ import { isAbsolute, resolve } from 'node:path'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
-import { resolveStore, storePath } from '@pseudo-agi/store'
+import { resolveStore, resolveWorkspaceRoot, storePath } from '@pseudo-agi/store'
 
 import { Config, validateConfig } from './config.js'
 import type { MemoryConfig } from './config.js'
@@ -72,8 +72,10 @@ export function apply(ctx: Context, config: MemoryConfig): void {
   }
   // Every relative path in this plugin — the memory tree and `file` evidence
   // refs — resolves against the configured workspace root, never against the
-  // process cwd, because an agent session's cwd can differ from the host's.
-  const workspaceRoot = resolve(config.workspaceRoot)
+  // process cwd. An empty setting means the platform default
+  // (`<home>/dsh-pseudo-agi`), so an unconfigured install still lands somewhere
+  // stable and writable.
+  const workspaceRoot = resolveWorkspaceRoot(config.workspaceRoot)
   // The knowledge base may live outside the workspace (another disk, a synced
   // folder). One pointer file decides; see `@pseudo-agi/store`.
   const location = resolveStore({ workspaceRoot, storeRoot: config.storeRoot })

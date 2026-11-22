@@ -29,16 +29,26 @@
 | 来源 | 命令 |
 | --- | --- |
 | npm（发布后） | `pnpm add @pseudo-agi/bundle` |
-| GitHub | `pnpm add "github:FENG-DEAN/dsh-pseudo-agi#v0.1.0&path:packages/pseudo-agi-bundle"` |
-| tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.1.0.tgz` |
+| GitHub | `pnpm add "github:FENG-DEAN/dsh-pseudo-agi#v0.2.0&path:packages/pseudo-agi-bundle"` |
+| tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.2.0.tgz` |
 
 DSH 插件页的安装输入框接受同样的 spec（包名 / 绝对路径 / tarball URL / Git 地址）。
 
 > **插件页里贴 GitHub 地址时，要贴带 `&path:` 的整串**：
-> `github:FENG-DEAN/dsh-pseudo-agi#v0.1.0&path:packages/pseudo-agi-bundle`
+> `github:FENG-DEAN/dsh-pseudo-agi#v0.2.0&path:packages/pseudo-agi-bundle`
 > 仓库根是 `pseudo-agi-workspace`（workspace 聚合包，没有 `dsh.bundle`），只贴 `https://github.com/FENG-DEAN/dsh-pseudo-agi` 会被装成聚合包，再被判定 `not-bundle` 撤销。
 
-装好后**必须**把 `workspaceRoot` 覆盖成你的工程绝对路径——patch 里默认的 `.` 是宿主进程 cwd：
+**装好即可用，不需要配置。** `workspaceRoot` 留空时默认落在 `<用户主目录>/dsh-pseudo-agi`（Windows 上是 `C:\Users\<你>\dsh-pseudo-agi`）——稳定、可写，**绝不会回退到 DSH 的安装目录**：
+
+```text
+~/dsh-pseudo-agi/
+└── .pseudo-agi/
+    ├── memory/{working,episodic,semantic,procedural}/
+    ├── governance/*.jsonl
+    └── working.md
+```
+
+只有想让它直接检索你工程里的 `docs/` 时，才需要覆盖 `workspaceRoot`：
 
 ```yaml
 # profile/cordis.patch.yml。config 是整份替换，不是深合并：

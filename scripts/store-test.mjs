@@ -12,14 +12,16 @@
 
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { homedir, tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 
 import {
+  defaultWorkspaceRoot,
   isWithin,
   pointerPath,
   relocateStore,
   resolveStore,
+  resolveWorkspaceRoot,
   rollbackStore,
   storePath,
   storeStats,
@@ -82,6 +84,26 @@ async function seed(base) {
 
 try {
   console.log('\n[1] 解析优先级：指针 → 配置 → 默认')
+
+  await check('未配置 workspaceRoot 时落到用户主目录下的固定目录', () => {
+    const base = defaultWorkspaceRoot()
+    assert.ok(base.startsWith(homedir()), `default must live under the home directory: ${base}`)
+    assert.equal(base, join(homedir(), 'dsh-pseudo-agi'))
+    // Empty and whitespace both mean "default"; an explicit value is honoured,
+    // including `.` for a deployment that really wants the process cwd.
+    assert.equal(resolveWorkspaceRoot(''), base)
+    assert.equal(resolveWorkspaceRoot('   '), base)
+    assert.equal(resolveWorkspaceRoot(undefined), base)
+    assert.equal(resolveWorkspaceRoot(workspace), resolve(workspace))
+    assert.equal(resolveWorkspaceRoot('.'), resolve('.'))
+  })
+
+  await check('三个 Schemastery 层的 workspaceRoot 默认值都是空（= 平台默认）', () => {
+    for (const [name, schema] of [['memory', MemoryConfig], ['governance', GovernanceConfig], ['tools', ToolsConfig]]) {
+      const value = resolveConfig(schema, {})
+      assert.equal(value.workspaceRoot, '', `${name} must default to the platform default`)
+    }
+  })
 
   await check('没有指针时用配置默认值', () => {
     const location = resolveStore({ workspaceRoot: workspace })

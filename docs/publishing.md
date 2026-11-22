@@ -37,9 +37,9 @@ node scripts/set-repository.mjs https://github.com/<owner>/<repo>
 ```bash
 git remote add origin git@github.com:<owner>/<repo>.git
 git push -u origin main
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.2.0 && git push origin v0.2.0
 pnpm pack-bundle
-gh release create v0.1.0 dist/pseudo-agi-bundle-0.1.0.tgz dist/pseudo-agi-bundle-0.1.0.manifest.json --generate-notes
+gh release create v0.2.0 dist/pseudo-agi-bundle-0.2.0.tgz dist/pseudo-agi-bundle-0.2.0.manifest.json --generate-notes
 ```
 
 三种"使用者安装"的地址，推荐按这个顺序对外公布：
@@ -49,7 +49,7 @@ gh release create v0.1.0 dist/pseudo-agi-bundle-0.1.0.tgz dist/pseudo-agi-bundle
 pnpm add "github:<owner>/<repo>#<commit>&path:packages/pseudo-agi-bundle"
 
 # 2) Release 上的 tgz（可核对 sha256）
-pnpm add https://github.com/<owner>/<repo>/releases/download/v0.1.0/pseudo-agi-bundle-0.1.0.tgz
+pnpm add https://github.com/<owner>/<repo>/releases/download/v0.2.0/pseudo-agi-bundle-0.2.0.tgz
 
 # 3) npm 包名（发布之后）
 pnpm add @pseudo-agi/bundle
@@ -95,7 +95,7 @@ pnpm --filter @pseudo-agi/bundle publish --access public
 
 # 方式二：发布 pack-bundle 的产物（可先核对 sha256，再挂 Release）
 pnpm pack-bundle
-npm publish dist/pseudo-agi-bundle-0.1.0.tgz --access public
+npm publish dist/pseudo-agi-bundle-0.2.0.tgz --access public
 ```
 
 `prepublishOnly` 会检查 `client.js` 与 `vendor/node_modules/@pseudo-agi/*` 是否在位，缺任何一个就拒绝发布（提示先跑 `pnpm -r run build && pnpm vendor`）。`npm publish <tarball>` 不跑生命周期脚本，所以产物发布不受影响。
@@ -119,7 +119,7 @@ test -f node_modules/@pseudo-agi/bundle/client.js                    # 面板浏
 
 ## 5. 未发布前的分发
 
-发布链路没打通时，`pack-bundle` 的 tgz 本身就是完整的分发单元：放到任意静态 URL，用 `pnpm add https://…/pseudo-agi-bundle-0.1.0.tgz` 或插件页贴地址安装。见 `docs/install.md` §2.1。
+发布链路没打通时，`pack-bundle` 的 tgz 本身就是完整的分发单元：放到任意静态 URL，用 `pnpm add https://…/pseudo-agi-bundle-0.2.0.tgz` 或插件页贴地址安装。见 `docs/install.md` §2.1。
 
 ## 6. 升级与回滚
 

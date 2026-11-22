@@ -30,7 +30,7 @@
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
-| `workspaceRoot` | `.` | 工作区根。**必须显式配绝对路径**，依赖宿主 cwd 会让围栏失去意义 |
+| `workspaceRoot` | `''` | 工作区根。留空即用默认 `<home>/dsh-pseudo-agi`；换位置时写绝对路径 |
 | `storeRoot` | `.pseudo-agi` | 知识库默认根；被 `<workspaceRoot>/.pseudo-agi/store.json` 指针覆盖 |
 | `knowledgeRoots` | `['docs', '.pseudo-agi/memory']` | `kb_search` 的检索根。`.pseudo-agi` 前缀跟随活动根；绝对路径允许在工作区外（搬家后的知识库） |
 | `writeRoots` | `['.']` | 允许写入的子目录。把搬出去的库设为可写，就往这里加它的绝对路径——读得到不等于写得进 |

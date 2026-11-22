@@ -8,7 +8,10 @@ import z from '@deepseek-ai/schemastery'
 
 /** Plugin configuration. */
 export interface ToolsConfig {
-  /** Workspace root every relative path is resolved against. */
+  /**
+   * Workspace root every relative path is resolved against. Empty means the
+   * platform default (`<home>/dsh-pseudo-agi`); never the process cwd.
+   */
   readonly workspaceRoot: string
   /**
    * Default knowledge-base root, relative to the workspace root or absolute.
@@ -46,7 +49,7 @@ export interface ToolsConfig {
 
 /** Schemastery schema; invalid config fails at load time. */
 export const Config: z<ToolsConfig> = z.object({
-  workspaceRoot: z.string().default('.'),
+  workspaceRoot: z.string().default(''),
   storeRoot: z.string().default('.pseudo-agi'),
   knowledgeRoots: z.array(z.string()).default(['docs', '.pseudo-agi/memory']),
   writeRoots: z.array(z.string()).default(['.']),
@@ -67,7 +70,6 @@ export function validateConfig(config: ToolsConfig): void {
   const fail = (message: string): never => {
     throw new Error(`pseudo-agi-tools: ${message}`)
   }
-  if (config.workspaceRoot.trim().length === 0) fail('config.workspaceRoot must not be empty')
   if (config.storeRoot.trim().length === 0) fail('config.storeRoot must not be empty')
   if (config.knowledgeRoots.length === 0) fail('config.knowledgeRoots must list at least one directory')
   if (config.writeRoots.length === 0) fail('config.writeRoots must list at least one directory')

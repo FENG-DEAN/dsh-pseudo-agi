@@ -46,15 +46,15 @@ pnpm verify            # build + smoke + store-test + load-test + panel-test + b
 
 ```bash
 pnpm pack-bundle
-# → dist/pseudo-agi-bundle-0.1.0.tgz + .manifest.json（sha256、包版本、文件数）；挂 Release 用
+# → dist/pseudo-agi-bundle-0.2.0.tgz + .manifest.json（sha256、包版本、文件数）；挂 Release 用
 ```
 
 四种安装入口：
 
 | 入口 | spec |
 | --- | --- |
-| 本地文件 | `pnpm add ./dist/pseudo-agi-bundle-0.1.0.tgz` |
-| 在线 tarball | `pnpm add https://example.com/pseudo-agi-bundle-0.1.0.tgz`（GitHub Release、静态站点、对象存储都可以） |
+| 本地文件 | `pnpm add ./dist/pseudo-agi-bundle-0.2.0.tgz` |
+| 在线 tarball | `pnpm add https://example.com/pseudo-agi-bundle-0.2.0.tgz`（GitHub Release、静态站点、对象存储都可以） |
 | GitHub 仓库 | `pnpm add "github:<owner>/<repo>#<commit>&path:packages/pseudo-agi-bundle"`（仓库已带 `vendor/` 与 `client.js`，安装时不构建） |
 | 插件页 | 把上面任一 spec 贴进插件管理器的安装输入框（`parseInstallSpec` 认绝对路径、tarball URL、Git 地址、registry 包名） |
 
@@ -95,7 +95,7 @@ pnpm bundle-test
 
 需要单独升级某一层、或不想用自包含产物时：
 
-`pnpm pack` 会把 `workspace:^0.1.0` 转成 `^0.1.0`，而 `@pseudo-agi/*` 不在公共 registry 上——所以直接把 bundle 装进 profile 会解析失败。实测可行的组合是「七个 tarball + `overrides` + 七个直接依赖」：
+`pnpm pack` 会把 `workspace:^0.2.0` 转成 `^0.2.0`，而 `@pseudo-agi/*` 不在公共 registry 上——所以直接把 bundle 装进 profile 会解析失败。实测可行的组合是「七个 tarball + `overrides` + 七个直接依赖」：
 
 ```jsonc
 // profile/package.json —— 不用 bundle、直接装六层时：每个插件包都必须是直接依赖，
@@ -103,12 +103,12 @@ pnpm bundle-test
 // （用 bundle 的话走 §2.1，一条 spec 就够，不需要 overrides。）
 {
   "dependencies": {
-    "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.1.0.tgz",
-    "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.1.0.tgz",
-    "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.1.0.tgz",
-    "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.1.0.tgz",
-    "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.1.0.tgz",
-    "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.1.0.tgz"
+    "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.2.0.tgz",
+    "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.2.0.tgz",
+    "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.2.0.tgz",
+    "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.2.0.tgz",
+    "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.2.0.tgz",
+    "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.2.0.tgz"
   }
 }
 ```
@@ -117,15 +117,15 @@ pnpm bundle-test
 # profile/pnpm-workspace.yaml —— overrides 在 pnpm 11 已迁到这里；
 # package.json 里的 "pnpm.overrides" 会被忽略（只有一条警告）。
 overrides:
-  "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.1.0.tgz"
-  "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.1.0.tgz"
-  "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.1.0.tgz"
-  "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.1.0.tgz"
-  "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.1.0.tgz"
-  "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.1.0.tgz"
+  "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.2.0.tgz"
+  "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.2.0.tgz"
+  "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.2.0.tgz"
+  "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.2.0.tgz"
+  "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.2.0.tgz"
+  "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.2.0.tgz"
 ```
 
-`@pseudo-agi/store` 必须同时出现在两处：它是三个插件包的**运行时**依赖（不是 peer），缺了它 `memory`/`tools` 一加载就 `ERR_MODULE_NOT_FOUND`；而它们的 `^0.1.0` 只有 override 才能落回本地 tarball。bundle 不需要这一套——它自带 `vendor/`，装它一条 spec 即可（§2.1）。
+`@pseudo-agi/store` 必须同时出现在两处：它是三个插件包的**运行时**依赖（不是 peer），缺了它 `memory`/`tools` 一加载就 `ERR_MODULE_NOT_FOUND`；而它们的 `^0.2.0` 只有 override 才能落回本地 tarball。bundle 不需要这一套——它自带 `vendor/`，装它一条 spec 即可（§2.1）。
 
 外加 `.npmrc`：
 
@@ -140,9 +140,9 @@ strict-peer-dependencies=false
 
 > 旧写法（把 overrides 放到 `package.json` 的 `pnpm` 字段）在 pnpm 11 下不生效：安装会退回 registry 并报 `ERR_PNPM_FETCH_404`。这是 2026-11-22 记录那次验证之后 pnpm 的行为变化。
 
-**分发时仍必须处理的两件事**：
+**分发时要留意的两件事**：
 
-1. `cordis.patch.yml` 里每个 `workspaceRoot: .` 都是相对宿主进程 cwd 的——装好后必须在 profile 的 `cordis.patch.yml` 里覆盖成绝对路径（这个缺陷在 memory 与 governance 上各犯过一次，见 [spec-compliance](spec-compliance.md) §3）；
+1. `workspaceRoot` 留空即用平台默认 `<home>/dsh-pseudo-agi`，不需要配置；只有想让它检索某个工程的 `docs/` 时才覆盖成绝对路径（历史教训见 [spec-compliance](spec-compliance.md) §3：这个值**绝不能**回退到 `process.cwd()`）；
 2. `writeRequiresApproval` 在 bundle 里默认为 `false`（意识即模型），需要人工闸门的部署要显式改成 `true`。
 
 ## 3. 装载
@@ -163,8 +163,7 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
         root: .pseudo-agi/memory
     - id: pseudo-agi-tools
       name: '@pseudo-agi/tools'
-      config:
-        workspaceRoot: .
+      # 省略 config：workspaceRoot 用平台默认 <home>/dsh-pseudo-agi，其余字段用插件默认值
     - id: pseudo-agi-scaffold
       name: '@pseudo-agi/scaffold'
       config:
@@ -198,7 +197,7 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 
 | 字段 | 默认 | 含义 |
 | --- | --- | --- |
-| `workspaceRoot` | `.` | `root` 与 `file` 证据引用解析的基准。**会话 cwd 与宿主 cwd 不一致时必须显式设置** |
+| `workspaceRoot` | `''` | `root` 与 `file` 证据引用解析的基准。留空即用默认 `<home>/dsh-pseudo-agi` |
 | `storeRoot` | `.pseudo-agi` | 知识库默认根；被 `<workspaceRoot>/.pseudo-agi/store.json` 指针覆盖 |
 | `root` | `.pseudo-agi/memory` | 记忆树根目录。以 `.pseudo-agi` 开头时按**活动根**解析 |
 | `recallLayers` | 全部四层 | 普通召回搜索哪些层 |
@@ -215,7 +214,7 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 
 | 字段 | 默认 | 含义 |
 | --- | --- | --- |
-| `workspaceRoot` | `.` | 所有相对路径的基准 |
+| `workspaceRoot` | `''` | 所有相对路径的基准。留空即用默认 `<home>/dsh-pseudo-agi` |
 | `storeRoot` | `.pseudo-agi` | 知识库默认根；被指针文件覆盖 |
 | `knowledgeRoots` | `docs`、`.pseudo-agi/memory` | 只读检索可读的目录；`.pseudo-agi` 前缀按活动根解析，绝对路径允许在工作区外（搬家后的知识库） |
 | `writeRoots` | `.` | 受控写入可写的目录；要把搬走的库设为可写就往这里加绝对路径 |
@@ -240,7 +239,7 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 
 | 字段 | 默认 | 含义 |
 | --- | --- | --- |
-| `workspaceRoot` | `.` | `root` 解析基准。**宿主进程 cwd 通常不是工程目录，必须显式设置** |
+| `workspaceRoot` | `''` | `root` 解析基准。留空即用默认 `<home>/dsh-pseudo-agi` |
 | `storeRoot` | `.pseudo-agi` | 知识库默认根；被指针文件覆盖 |
 | `root` | `.pseudo-agi/governance` | JSONL 目录。以 `.pseudo-agi` 开头时按**活动根**解析 |
 | `maxSessions` | `256` | 内存指标表容量（LRU 淘汰） |

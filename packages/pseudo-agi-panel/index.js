@@ -12,7 +12,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { resolveStore } from '@pseudo-agi/store'
+import { resolveStore, resolveWorkspaceRoot } from '@pseudo-agi/store'
 
 /** Plugin name. */
 export const name = 'pseudo-agi-panel'
@@ -56,8 +56,8 @@ const AUTH_COOKIE_BASE64URL = /^[A-Za-z0-9_-]*$/
  */
 function validateConfig(config) {
   const workspaceRoot = config?.workspaceRoot
-  if (typeof workspaceRoot !== 'string' || workspaceRoot.trim().length === 0) {
-    throw new Error('pseudo-agi-panel: config.workspaceRoot must be a non-empty string')
+  if (workspaceRoot !== undefined && typeof workspaceRoot !== 'string') {
+    throw new Error('pseudo-agi-panel: config.workspaceRoot must be a string when set')
   }
   const storeRoot = config?.storeRoot
   if (storeRoot !== undefined && (typeof storeRoot !== 'string' || storeRoot.trim().length === 0)) {
@@ -350,9 +350,10 @@ function authorize(req, secret) {
 export function apply(ctx, config) {
   validateConfig(config)
   // The panel reads the same pointer file as the other layers, so a relocated
-  // knowledge base shows up here without a second config to keep in sync.
+  // knowledge base shows up here without a second config to keep in sync. An
+  // empty workspaceRoot means the platform default (`<home>/dsh-pseudo-agi`).
   const location = resolveStore({
-    workspaceRoot: config.workspaceRoot,
+    workspaceRoot: resolveWorkspaceRoot(config.workspaceRoot),
     storeRoot: config.storeRoot ?? DEFAULT_STORE_ROOT,
   })
   if (location.warning !== undefined) {

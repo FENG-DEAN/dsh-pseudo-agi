@@ -35,7 +35,7 @@
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
-| `workspaceRoot` | `无（必填）` | 读文件与解析路径的基准，必须是绝对路径 |
+| `workspaceRoot` | `''` | 读文件与解析路径的基准。留空即用默认 `<home>/dsh-pseudo-agi` |
 | `storeRoot` | `.pseudo-agi` | 知识库默认根；被 `<workspaceRoot>/.pseudo-agi/store.json` 指针覆盖 |
 
 ## 依赖

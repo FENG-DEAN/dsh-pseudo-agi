@@ -6,6 +6,12 @@ export declare const STORE_POINTER: string
 export declare const STORE_VERSION: number
 /** Layers the knowledge base owns. */
 export declare const STORE_LAYERS: readonly string[]
+/** Directory created under the user's home when no workspace root is configured. */
+export declare const DEFAULT_WORKSPACE_DIR: string
+/** Absolute default workspace root (`<home>/dsh-pseudo-agi`). */
+export declare function defaultWorkspaceRoot(): string
+/** Resolve the `workspaceRoot` setting; an empty value means the default. */
+export declare function resolveWorkspaceRoot(configured: string | undefined): string
 
 /** Where the knowledge base actually is, and why. */
 export interface StoreLocation {

@@ -10,12 +10,11 @@
 # as a whole — the loader does not deep-merge with a later profile layer, so a
 # profile that re-declares a row must restate every field it wants.
 #
-# ── WARNING ──────────────────────────────────────────────────────────────────
-# Every `workspaceRoot: .` below is resolved against the HOST PROCESS cwd, which
-# is usually not your project directory and may not even be writable. Override
-# each one with an absolute path in your profile's cordis.patch.yml. This defect
-# has shipped twice in this project (memory, then governance); see
-# docs/spec-compliance.md §3.
+# ── 工作区位置 ────────────────────────────────────────────────────────────────
+# `workspaceRoot` 故意不写：留空表示使用平台默认位置 `<home>/dsh-pseudo-agi`
+# （例如 C:\Users\<name>\dsh-pseudo-agi）——稳定、可写，且**绝不回退到宿主进程 cwd**
+# （那是安装目录，每台机器不同，还可能不可写）。只有想换位置时才显式设置，并优先写
+# 绝对路径：相对值（如 `.`）会按 cwd 解析。
 #
 # ── 知识库位置 ────────────────────────────────────────────────────────────────
 # `storeRoot: .pseudo-agi` is only a DEFAULT. The live root is whatever
@@ -28,9 +27,9 @@
 # ── 为什么 name 是包内子路径 ──────────────────────────────────────────────────
 # 形状是 `@pseudo-agi/bundle/layers/<layer>`，不是 `@pseudo-agi/<layer>`：插件 patch
 # 里的 name 是一个模块说明符，loader 用 `import.meta.resolve` 从**profile 的 package
-# scope** 解析它。自包含安装时 profile 只有 `@pseudo-agi/bundle` 一个目录，六个层包
-# 在它自己的 node_modules 里；子路径从 profile 解析得到 bundle，转发文件再从 bundle
-# 目录解析到内置副本。link 安装（开发）同样可用，因为那时兄弟包在 workspace 里。
+# scope** 解析它。装的就是 bundle 这一个包，六层实现编译后在它的 `vendor/` 里；
+# 子路径从 profile 解析得到 bundle，转发文件再用相对路径解析到 vendor 副本。同一份
+# patch 对 GitHub、npm、tarball 与本地 link 四种安装形态都成立。
 # 详见 packages/pseudo-agi-bundle/layers/README.md。
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -38,7 +37,6 @@
     - id: pseudo-agi-memory
       name: '@pseudo-agi/bundle/layers/memory'
       config:
-        workspaceRoot: .
         storeRoot: .pseudo-agi
         root: .pseudo-agi/memory
         maxInjectTokens: 900
@@ -50,7 +48,6 @@
     - id: pseudo-agi-tools
       name: '@pseudo-agi/bundle/layers/tools'
       config:
-        workspaceRoot: .
         storeRoot: .pseudo-agi
         knowledgeRoots:
           - docs
@@ -74,7 +71,6 @@
     - id: pseudo-agi-governance
       name: '@pseudo-agi/bundle/layers/governance'
       config:
-        workspaceRoot: .
         storeRoot: .pseudo-agi
         root: .pseudo-agi/governance
         journal: true
@@ -84,5 +80,4 @@
     - id: pseudo-agi-panel
       name: '@pseudo-agi/bundle/layers/panel'
       config:
-        workspaceRoot: .
         storeRoot: .pseudo-agi

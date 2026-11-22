@@ -29,7 +29,7 @@
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
-| `workspaceRoot` | `.` | JSONL 目录的基准。**必须显式配绝对路径**——用 `process.cwd()` 会让写入静默失败（本项目踩过两次） |
+| `workspaceRoot` | `''` | JSONL 目录的基准。留空即用默认 `<home>/dsh-pseudo-agi`，绝不回退到 `process.cwd()` |
 | `storeRoot` | `.pseudo-agi` | 知识库默认根；被 `<workspaceRoot>/.pseudo-agi/store.json` 指针覆盖 |
 | `root` | `.pseudo-agi/governance` | 日志目录。以 `.pseudo-agi` 开头时按**活动根**解析——审计日志跟着知识库一起搬，不会分家 |
 | `journal` | `true` | 是否落 JSONL；关掉后只有内存指标 |

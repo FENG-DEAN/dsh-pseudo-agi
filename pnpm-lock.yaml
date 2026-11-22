@@ -26,7 +26,7 @@ importers:
         specifier: ~3.19.0
         version: 3.19.0
       '@pseudo-agi/store':
-        specifier: workspace:^0.1.0
+        specifier: workspace:^0.2.0
         version: link:../pseudo-agi-store
     devDependencies:
       '@deepseek-ai/cordis':
@@ -57,7 +57,7 @@ importers:
         specifier: ~3.19.0
         version: 3.19.0
       '@pseudo-agi/store':
-        specifier: workspace:^0.1.0
+        specifier: workspace:^0.2.0
         version: link:../pseudo-agi-store
     devDependencies:
       '@deepseek-ai/cordis':
@@ -85,7 +85,7 @@ importers:
   packages/pseudo-agi-panel:
     dependencies:
       '@pseudo-agi/store':
-        specifier: workspace:^0.1.0
+        specifier: workspace:^0.2.0
         version: link:../pseudo-agi-store
 
   packages/pseudo-agi-scaffold:
@@ -118,7 +118,7 @@ importers:
         specifier: ~3.19.0
         version: 3.19.0
       '@pseudo-agi/store':
-        specifier: workspace:^0.1.0
+        specifier: workspace:^0.2.0
         version: link:../pseudo-agi-store
     devDependencies:
       '@deepseek-ai/cordis':

@@ -25,6 +25,7 @@
 
 import { readFileSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 /** Name of the store directory when it lives inside the workspace. */
@@ -38,6 +39,36 @@ export const STORE_VERSION = 1
 
 /** Layers the knowledge base owns, in the order a reader lists them. */
 export const STORE_LAYERS = ['working', 'episodic', 'semantic', 'procedural']
+
+/** Directory created under the user's home when no workspace root is configured. */
+export const DEFAULT_WORKSPACE_DIR = 'dsh-pseudo-agi'
+
+/**
+ * Where the pseudo-AGI keeps its workspace when a deployment configures nothing.
+ *
+ * A plugin may not fall back to `process.cwd()`: the host process usually runs
+ * from its install directory, which differs per machine and may not be writable.
+ * The user's home is stable, writable, and the same place the rest of a user's
+ * data lives — so an install with no configuration still lands somewhere sane.
+ * @returns {string} absolute default workspace root.
+ */
+export function defaultWorkspaceRoot() {
+  return join(homedir(), DEFAULT_WORKSPACE_DIR)
+}
+
+/**
+ * Resolve the workspace root a layer should use.
+ *
+ * An empty setting means "use the default"; an explicit value (including `.`)
+ * is resolved as given, so a deployment that wants the current directory can
+ * still ask for it.
+ * @param {string|undefined} configured the `workspaceRoot` setting.
+ * @returns {string} absolute workspace root.
+ */
+export function resolveWorkspaceRoot(configured) {
+  const text = typeof configured === 'string' ? configured.trim() : ''
+  return text === '' ? defaultWorkspaceRoot() : resolve(text)
+}
 
 /** Whether two paths are compared case-insensitively on this platform. */
 const CASELESS = process.platform === 'win32' || process.platform === 'darwin'

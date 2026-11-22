@@ -5,7 +5,7 @@
   },
   "name": "pseudo-agi-workspace",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "A layered pseudo-AGI built strictly on DeepSeek Harness plugin contracts",
   "scripts": {

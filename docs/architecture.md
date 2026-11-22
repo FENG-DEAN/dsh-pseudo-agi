@@ -50,6 +50,8 @@
 
 ## 4. 磁盘布局
 
+`<workspace>` 默认是 `<用户主目录>/dsh-pseudo-agi`（`workspaceRoot` 留空时），**不是**宿主进程 cwd——见 §4.2。
+
 ```
 <workspace>/
 ├── .pseudo-agi/
@@ -65,6 +67,16 @@
 │       └── <sessionId>.jsonl         # 决策-行动-结果三元组
 └── docs/                              # kb_search / kb_read 的知识根
 ```
+
+### 4.2 工作区默认位置
+
+`workspaceRoot` 留空 ⇒ `<home>/dsh-pseudo-agi`；显式值按原样解析（相对值按 cwd，故推荐绝对路径）。这个默认值是有意的：
+
+- 宿主进程的 cwd 是安装目录，每台机器不同，还可能不可写；
+- 用户主目录稳定且可写，未做任何配置的安装也能"装上就有地方存"；
+- 想让它检索某个工程的 `docs/`，再覆盖成该工程的绝对路径。
+
+实现只有一处（`@pseudo-agi/store` 的 `resolveWorkspaceRoot`），四层共用。
 
 ### 4.1 知识库活动根（可换位置）
 

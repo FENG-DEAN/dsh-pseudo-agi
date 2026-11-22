@@ -15,9 +15,9 @@ import { MEMORY_LAYERS } from './store.js'
 export interface MemoryConfig {
   /**
    * Base directory that `root` and `file` evidence references resolve against.
-   * Defaults to the process cwd, but a deployment whose agent sessions do not
-   * run in the process cwd must set this explicitly — otherwise recall works
-   * while evidence checks look in the wrong tree.
+   * Empty means the platform default (`<home>/dsh-pseudo-agi`). Never the process
+   * cwd: the host runs from its install directory, which differs per machine and
+   * may not be writable.
    */
   readonly workspaceRoot: string
   /**
@@ -55,7 +55,7 @@ export interface MemoryConfig {
 
 /** Schemastery schema; invalid config fails at load time. */
 export const Config: z<MemoryConfig> = z.object({
-  workspaceRoot: z.string().default('.'),
+  workspaceRoot: z.string().default(''),
   storeRoot: z.string().default('.pseudo-agi'),
   root: z.string().default('.pseudo-agi/memory'),
   recallLayers: z.array(z.union(MEMORY_LAYERS)).default([...MEMORY_LAYERS]),
@@ -78,7 +78,6 @@ export function validateConfig(config: MemoryConfig): void {
   const fail = (message: string): never => {
     throw new Error(`pseudo-agi-memory: ${message}`)
   }
-  if (config.workspaceRoot.trim().length === 0) fail('config.workspaceRoot must not be empty')
   if (config.storeRoot.trim().length === 0) fail('config.storeRoot must not be empty')
   if (config.root.trim().length === 0) fail('config.root must not be empty')
   for (const [name, value] of [

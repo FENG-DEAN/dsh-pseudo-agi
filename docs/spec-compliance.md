@@ -38,7 +38,7 @@
 | 5 | `candidates.records.sort()` / `asJson` 返回值过宽 | 只读数组不可 `sort`；`JsonValue` 不能赋给 `Record<string, JsonValue>` | 展开后排序；新增 `asJsonObject()` 收窄 |
 | 6 | governance 用 `process.cwd()` 解析 journal 目录 | 宿主 cwd 不是工程目录且不可写，`mkdir`/`append` 失败被静默吞掉，**JSONL 永远为空**，而内存指标看起来正常 | 加 `workspaceRoot`，与 memory 完全一致 |
 
-第 3 与第 6 条是同一个毛病犯了两次：**任何写盘插件都必须显式配置 `workspaceRoot`，绝不能用 `process.cwd()`**。宿主进程的 cwd 通常不是工程目录，且可能不可写；更糟的是失败往往被静默吞掉，症状是"功能缺失"而不是"报错"。
+第 3 与第 6 条是同一个毛病犯了两次：**任何写盘插件都不能靠 `process.cwd()` 决定写到哪里**。宿主进程的 cwd 通常不是工程目录，且可能不可写；更糟的是失败往往被静默吞掉，症状是"功能缺失"而不是"报错"。当时的修法是新增 `workspaceRoot` 配置项并要求部署显式设置；后来的修法更进一步——`workspaceRoot` 留空时默认落到 `<home>/dsh-pseudo-agi`，既不依赖 cwd，也不需要使用者配置。
 
 最初预判的三个风险**全部没有触发**：`z.union(MEMORY_LAYERS)` 形态可用、`ctx.inject(['systemPrompt'], cb)` 接受 `void` 回调、`declare module '@deepseek-ai/dsh-llm'` 的 `MessageSourceMap` 合并在包根有效。
 

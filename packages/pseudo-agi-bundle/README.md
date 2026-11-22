@@ -1,4 +1,4 @@
-﻿# @pseudo-agi/bundle
+# @pseudo-agi/bundle
 
 鲸鱼娘 AGI 的分发单元，也是**唯一需要安装的包**。它把五层实现 + 知识库位置库 + 面板客户端装在一起，装它一个就够。
 
@@ -32,17 +32,27 @@ package/
 pnpm add @pseudo-agi/bundle
 
 # 直接从 GitHub 安装（不需要构建，仓库里已带产物）
-pnpm add "github:FENG-DEAN/dsh-pseudo-agi#v0.1.0&path:packages/pseudo-agi-bundle"
+pnpm add "github:FENG-DEAN/dsh-pseudo-agi#v0.2.0&path:packages/pseudo-agi-bundle"
 
 # 发布产物 / GitHub Release 上的 tarball
-pnpm add https://github.com/<owner>/<repo>/releases/download/v0.1.0/pseudo-agi-bundle-0.1.0.tgz
+pnpm add https://github.com/<owner>/<repo>/releases/download/v0.2.0/pseudo-agi-bundle-0.2.0.tgz
 ```
 
 DSH 插件页的安装输入框接受同样的 spec（包名、绝对路径、tarball URL、Git 地址）。
 
 ## 配置
 
-patch 里每行都带 `workspaceRoot: .`，那是**相对宿主进程 cwd** 的，必须覆盖成你的工程绝对路径。最小可用覆盖（写进 profile 的 `cordis.patch.yml`）：
+**不需要配置就能用。** patch 里故意不写 `workspaceRoot`：留空表示平台默认位置 `<用户主目录>/dsh-pseudo-agi`（Windows 上是 `C:\Users\<你>\dsh-pseudo-agi`），稳定、可写，且不会回退到 DSH 的安装目录。
+
+```text
+~/dsh-pseudo-agi/
+└── .pseudo-agi/
+    ├── memory/{working,episodic,semantic,procedural}/
+    ├── governance/*.jsonl
+    └── working.md
+```
+
+只有想让它直接检索你工程里的 `docs/`（`kb_search`、`kb_read` 的知识根）、或把记忆并进工程时，才覆盖 `workspaceRoot`：
 
 ```yaml
 # 只覆盖需要的字段；config 是整份替换，不是深合并。
@@ -50,17 +60,17 @@ patch 里每行都带 `workspaceRoot: .`，那是**相对宿主进程 cwd** 的�
   name: '@pseudo-agi/bundle/layers/memory'
   config:
     workspaceRoot: /absolute/path/to/your/project
-    storeRoot: .pseudo-agi
     root: .pseudo-agi/memory
 - id: pseudo-agi-tools
   name: '@pseudo-agi/bundle/layers/tools'
   config:
     workspaceRoot: /absolute/path/to/your/project
-    storeRoot: .pseudo-agi
     knowledgeRoots: [docs, .pseudo-agi/memory]
     writeRoots: ['.']
     writeRequiresApproval: false
 ```
+
+`workspaceRoot` 写相对值（如 `.`）会按宿主进程 cwd 解析——那是 DSH 的安装目录，通常不是你想要的；需要时请写绝对路径。
 
 完整五行与全部字段见包内的 [cordis.patch.yml](cordis.patch.yml)；逐字段说明见 [docs/install.md](../../docs/install.md) §4。
 
