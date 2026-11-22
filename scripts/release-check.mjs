@@ -51,7 +51,12 @@ const CARRIED = [
 /** Patch rows, in order; each must resolve through a bundle subpath. */
 const LAYER_ENTRIES = ['memory', 'tools', 'scaffold', 'governance', 'panel']
 
-/** Tarball entries that must never appear: build leftovers, tests, local state. */
+/**
+ * Tarball entries that must never appear: build leftovers, tests, local state,
+ * and — because a package tarball is rooted at its own directory — anything from
+ * the repository root. `AGI_STATE.md` and `.pseudo-agi/` hold the working notes
+ * and the memory records of one machine; they are not publishable material.
+ */
 const FORBIDDEN = [
   /\.map$/,
   /(^|\/)dist\//,
@@ -60,6 +65,14 @@ const FORBIDDEN = [
   /\.tsbuildinfo$/,
   /(^|\/)tmp\//,
   /(^|\/)store\.json$/,
+  /^\.\.\//,
+  /^AGI_STATE\.md$/,
+  /^\.pseudo-agi\//,
+  /^docs\//,
+  /^scripts\//,
+  /^pnpm-lock\.yaml$/,
+  /^pnpm-workspace\.yaml$/,
+  /^tsconfig\.base\.json$/,
 ]
 
 let checks = 0
