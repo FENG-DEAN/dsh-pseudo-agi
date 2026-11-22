@@ -33,13 +33,12 @@
 
 ## 下一步（按优先级）
 
-1. **确认浏览器面板在新鉴权下仍可用**（待用户确认）：真机 401 已成立；`client.js` 的 fetch 默认 `same-origin` 会带 cookie，逻辑上不受影响，但 UI 未亲眼确认。若面板空白，`git revert c9be26b` 即回滚。
 2. **补充文档**：把"写盘必须显式 workspaceRoot"这条教训写进 `docs/spec-compliance.md` 缺陷清单；把 `sidebar.panellist` slot 约定补进文档（`kb_search` 扫 7 个文件未找到）；把"插件 prefix 路由不走 Host 鉴权"写进架构文档。
 3. **跨会话连续性**：下次冷启动只靠本文件 + procedural 记忆能否恢复状态——已部分验证两次。
 4. **评估 bundle 分发**：`pnpm pack` + `file:` 装一次，验证"npm 包 + cordis.patch.yml"这条分发路径（当前是 `link:` 五包）。
 5. **沙箱**（见待决 2）：`ctx.sandbox` 仍未接。
 
-已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到；面板路由鉴权已实现（`pseudo-agi-panel` 验 Host Connection 的签名 cookie）；`controlled_write` 已**真机双向验证**遵守 `sandboxPolicy`（`read-only` 拒绝、`danger-full-access` 放行）。
+已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到；面板路由鉴权已实现（`pseudo-agi-panel` 验 Host Connection 的签名 cookie），且**用户确认浏览器面板在鉴权后仍能正常刷出数据**；`controlled_write` 已**真机双向验证**遵守 `sandboxPolicy`（`read-only` 拒绝、`danger-full-access` 放行）。
 
 ## 阻塞 / 待决
 
