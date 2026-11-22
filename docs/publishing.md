@@ -20,6 +20,37 @@ pnpm verify               # 五套测试 + release-check
 - 组合包产物：自包含六个实现包、五行入口、`client.js`、`LICENSE`，且**不含任何 `@deepseek-ai/*`**；
 - 源码目录的 `prepublishOnly` 闸门在位。
 
+## 0.1 一次性：仓库地址与开源发布
+
+开源仓库建好后，把地址写进八个 manifest（幂等，可重复跑）：
+
+```bash
+node scripts/set-repository.mjs https://github.com/<owner>/<repo> --dry-run   # 先看要改什么
+node scripts/set-repository.mjs https://github.com/<owner>/<repo>
+```
+
+它把 `repository` / `homepage` / `bugs` 写到根与七个包，并在 README 顶部补一行仓库链接。
+
+首次开源与打 tag：
+
+```bash
+git remote add origin git@github.com:<owner>/<repo>.git
+git push -u origin main
+git tag v0.1.0 && git push origin v0.1.0
+pnpm pack-bundle
+gh release create v0.1.0 dist/pseudo-agi-bundle-0.1.0.tgz dist/pseudo-agi-bundle-0.1.0.manifest.json --generate-notes
+```
+
+Release 上挂的 tgz 本身就是"在线安装"地址，使用者不必等 npm：
+
+```bash
+pnpm add https://github.com/<owner>/<repo>/releases/download/v0.1.0/pseudo-agi-bundle-0.1.0.tgz
+```
+
+`manifest.json` 里的 `sha256` 供使用者核对；插件页可以直接贴同一个 URL 安装。
+
+> 仓库里**不含** `.pseudo-agi/` 与 `AGI_STATE.md`：工作台、记忆、审计日志都是运行时数据（含本机绝对路径、端口、会话 id 与未公开的实验结论），由 `.gitignore` 整体排除。首次运行插件自行创建，想预置工作台就从 `templates/AGI_STATE.md` 复制。分工见 [agi-state.md](agi-state.md)。
+
 ## 1. 认证
 
 ```bash
