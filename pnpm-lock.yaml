@@ -89,6 +89,8 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  packages/pseudo-agi-panel: {}
+
   packages/pseudo-agi-scaffold:
     dependencies:
       '@deepseek-ai/schemastery':

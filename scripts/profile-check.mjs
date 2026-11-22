@@ -81,8 +81,24 @@ for (const [name, config] of Object.entries(expected)) {
   })
 }
 
-console.log('\n[2] patch 里的 config 能通过各自的 Schemastery 校验')
+await check('@pseudo-agi/panel 可被 profile 解析，且 client 侧含侧栏注册', async () => {
+  const resolved = require.resolve('@pseudo-agi/panel')
+  console.log(`       → ${resolved}`)
+  if (!resolved.startsWith('D:\\Doc\\AIDoc\\Dsh_dev\\dsh_agi_dev')) {
+    throw new Error(`解析到了非预期位置：${resolved}`)
+  }
+  const module = await import(pathToFileURL(resolved).href)
+  if (module.name !== 'pseudo-agi-panel') throw new Error(`unexpected name ${module.name}`)
+  if (!Array.isArray(module.inject)) throw new Error('missing inject')
+  if (typeof module.apply !== 'function') throw new Error('missing apply')
+  const client = await readFile(new URL('./client.js', pathToFileURL(resolved)), 'utf8')
+  for (const marker of ['__ModuleLoader__', "'sidebar.panellist'", "'main'", '/pseudo-agi/api']) {
+    if (!client.includes(marker)) throw new Error(`client.js missing ${marker}`)
+  }
+  console.log(`       → client.js ${client.length} 字节，含 sidebar.panellist + main 注册`)
+})
 
+console.log('\n[2] patch 里的 config 能通过各自的 Schemastery 校验')
 for (const [name, config] of Object.entries(expected)) {
   await check(`${name} 接受 cordis.patch.yml 中的配置`, async () => {
     const module = await import(pathToFileURL(require.resolve(name)).href)

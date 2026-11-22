@@ -85,3 +85,12 @@
   `{"kind":"scaffold","detail":{"turn":21,"step":1,"injected":true}}`、
   `{"kind":"tool","detail":{"name":"kb_read","callId":"...","isError":false}}`。
 - 覆盖缺口：`memory_recall("四层 闭环 脚手架 治理")` → 未找到（扫描 3 条），三条记忆里没有一条讲整体架构。
+
+### 2026-11-22 · 鲸鱼娘 AGI 管理面板（左侧栏入口）
+
+- 新增 `packages/pseudo-agi-panel`：Host 侧只注册一个同源只读路由 `/pseudo-agi/api/state`；Client 侧 `window.__ModuleLoader__.load` + `ctx.slots.inject('sidebar.panellist' | 'main')`。
+- 面板内容：分层计数、记忆列表（按更新时间倒序、带 confidence）、治理事件（step/scaffold/tool/memory/turn）、`AGI_STATE.md` 摘要、工具数。**只读**——不写文件、不调工具、不碰 loop。
+- 与 `preset-editor` 同构：手写 ESM + 浏览器模块格式，**无构建步骤**。
+- `scripts/panel-test.mjs`：真实 cordis + 假 webServer 驱动 `/state`，9/9 通过（含 404/405 与卸载撤销）。
+- profile 已 link 第 5 个包并新增 patch 行，`profile-check` 12/12。
+- 待验证（重启后）：侧栏出现鲸鱼图标，点击打开面板能看到实时数据。

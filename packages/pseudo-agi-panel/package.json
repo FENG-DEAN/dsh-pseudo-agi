@@ -1,0 +1,28 @@
+{
+  "name": "@pseudo-agi/panel",
+  "version": "0.1.0",
+  "description": "Whale-girl AGI management panel for the DeepSeek Harness: a left-sidebar entry plus a read-only panel over the pseudo-AGI state (layers, memories, event journal, working bench)",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}
