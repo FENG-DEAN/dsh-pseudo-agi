@@ -40,26 +40,27 @@ pnpm verify            # build + smoke + store-test + load-test + panel-test + b
 | `@pseudo-agi/store` | 知识库位置：指针解析 + 迁移/回滚（纯库，不是插件） |
 | `@pseudo-agi/bundle` | 分发单元：`dsh.bundle.patch` + `cordis.patch.yml` |
 
-### 2.1 一条 spec 安装（在线或本地，推荐）
+### 2.1 一条 spec 安装（在线、GitHub 或本地，推荐）
 
-`@pseudo-agi/bundle` 的发布形态是**自包含**的：一个 tgz 里带六个实现包（store/memory/tools/scaffold/governance/panel）和面板客户端，装它一个就够了。
+`@pseudo-agi/bundle` 是**开箱即用**的：六个实现包编译后随包携带在 `vendor/node_modules/@pseudo-agi/*`，面板客户端是包内的 `client.js`，两者都已提交进仓库。装它一个就够了，安装时不需要构建，也不需要解析任何外部包名。
 
 ```bash
 pnpm pack-bundle
-# → dist/pseudo-agi-bundle-0.1.0.tgz + .manifest.json（sha256、包版本、文件数）
+# → dist/pseudo-agi-bundle-0.1.0.tgz + .manifest.json（sha256、包版本、文件数）；挂 Release 用
 ```
 
-三种安装入口，装的是同一个文件：
+四种安装入口：
 
 | 入口 | spec |
 | --- | --- |
 | 本地文件 | `pnpm add ./dist/pseudo-agi-bundle-0.1.0.tgz` |
 | 在线 tarball | `pnpm add https://example.com/pseudo-agi-bundle-0.1.0.tgz`（GitHub Release、静态站点、对象存储都可以） |
-| 插件页 | 把上面两个地址之一贴进插件管理器的安装输入框（`parseInstallSpec` 认绝对路径、tarball URL、Git 地址、registry 包名） |
+| GitHub 仓库 | `pnpm add "github:<owner>/<repo>#<commit>&path:packages/pseudo-agi-bundle"`（仓库已带 `vendor/` 与 `client.js`，安装时不构建） |
+| 插件页 | 把上面任一 spec 贴进插件管理器的安装输入框（`parseInstallSpec` 认绝对路径、tarball URL、Git 地址、registry 包名） |
 
-为什么必须自包含：插件管理器一次只接受一条 spec，而 `@pseudo-agi/*` 不在任何 registry 上——只声明依赖的 bundle 装上去会以 `ERR_PNPM_FETCH_404` 失败（`@pseudo-agi/store` 是第一个 404 的）。自包含之后 pnpm 不再需要访问 registry 取兄弟包，tarball 里的 `node_modules` 会被保留。
+为什么必须自包含：插件管理器一次只接受一条 spec，而 `@pseudo-agi/*` 不在任何 registry 上——只声明依赖的 bundle 装上去会以 `ERR_PNPM_FETCH_404` 失败（`@pseudo-agi/store` 是第一个 404 的）。**不能**用 `bundledDependencies` 解决：实测 `pnpm pack` 会顺着 workspace 软链接把宿主包（`@deepseek-ai/*`）一起打进 tarball。所以改为把编译产物复制进包内 `vendor/` 并提交，`layers/*.js` 用相对路径指向它——这样从 Git 安装（没有安装步骤）同样成立。
 
-装好之后 profile 里只有 `@pseudo-agi/bundle` 一个包，patch 的五行各自解析到 `@pseudo-agi/bundle/layers/<layer>`，再由转发文件解析到 bundle 内置副本（理由见 [layers/README.md](../packages/pseudo-agi-bundle/layers/README.md)）。
+装好之后 profile 里只有 `@pseudo-agi/bundle` 一个包，patch 的五行各自解析到 `@pseudo-agi/bundle/layers/<layer>`，再由相对路径解析到包内 vendor 副本（理由见 [layers/README.md](../packages/pseudo-agi-bundle/layers/README.md)）。
 
 验收：
 
@@ -97,11 +98,11 @@ pnpm bundle-test
 `pnpm pack` 会把 `workspace:^0.1.0` 转成 `^0.1.0`，而 `@pseudo-agi/*` 不在公共 registry 上——所以直接把 bundle 装进 profile 会解析失败。实测可行的组合是「七个 tarball + `overrides` + 七个直接依赖」：
 
 ```jsonc
-// profile/package.json —— 五/六个插件包必须各自是直接依赖：
-// cordis patch 按包名加载，pnpm 的严格布局不会把嵌套依赖提升到 profile 根。
+// profile/package.json —— 不用 bundle、直接装六层时：每个插件包都必须是直接依赖，
+// 因为 cordis patch 按包名加载，而 pnpm 的严格布局不会把嵌套依赖提升到 profile 根。
+// （用 bundle 的话走 §2.1，一条 spec 就够，不需要 overrides。）
 {
   "dependencies": {
-    "@pseudo-agi/bundle": "file:./packs/pseudo-agi-bundle-0.1.0.tgz",
     "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.1.0.tgz",
     "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.1.0.tgz",
     "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.1.0.tgz",
@@ -124,7 +125,7 @@ overrides:
   "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.1.0.tgz"
 ```
 
-`@pseudo-agi/store` 必须同时出现在两处：它是三个插件包的**运行时**依赖（不是 peer），缺了它 `memory`/`tools` 一加载就 `ERR_MODULE_NOT_FOUND`；bundle 的 `^0.1.0` 也只有 override 才能落回本地 tarball。
+`@pseudo-agi/store` 必须同时出现在两处：它是三个插件包的**运行时**依赖（不是 peer），缺了它 `memory`/`tools` 一加载就 `ERR_MODULE_NOT_FOUND`；而它们的 `^0.1.0` 只有 override 才能落回本地 tarball。bundle 不需要这一套——它自带 `vendor/`，装它一条 spec 即可（§2.1）。
 
 外加 `.npmrc`：
 

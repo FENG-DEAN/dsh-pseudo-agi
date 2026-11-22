@@ -20,6 +20,31 @@
 
 > 关键点：**没有"AGI 插件"，也没有"控制器"**。判断权归模型；scaffold 只注入纪律并留痕，memory 是 Markdown 真源 + 预算召回，tools 是带 guard 边界的手脚，governance 只观察。四层任一切除，其余仍可运行。
 
+## 安装
+
+一个包，三种来源，装完即用——仓库里已带构建产物（`vendor/` 与 `client.js`），不会在你机器上重新构建：
+
+| 来源 | 命令 |
+| --- | --- |
+| npm（发布后） | `pnpm add @pseudo-agi/bundle` |
+| GitHub | `pnpm add "github:<owner>/<repo>#<commit>&path:packages/pseudo-agi-bundle"` |
+| tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.1.0.tgz` |
+
+DSH 插件页的安装输入框接受同样的 spec（包名 / 绝对路径 / tarball URL / Git 地址）。
+
+装好后**必须**把 `workspaceRoot` 覆盖成你的工程绝对路径——patch 里默认的 `.` 是宿主进程 cwd：
+
+```yaml
+# profile/cordis.patch.yml。config 是整份替换，不是深合并：
+# 覆盖某一行时，要把这一行想保留的字段全部重述。
+- id: pseudo-agi-memory
+  name: '@pseudo-agi/bundle/layers/memory'
+  config:
+    workspaceRoot: /absolute/path/to/your/project
+```
+
+装完可以做什么、完整五行配置、最小可用例子：见 [bundle README](packages/pseudo-agi-bundle/README.md)；逐字段说明见 [docs/install.md](docs/install.md) §4。
+
 ## 目录
 
 | 路径 | 作用 |
@@ -97,8 +122,8 @@ pnpm release-check  # 发布前检查实际会发出去的内容
 | 知识库位置：指针优先级、迁移、回滚、四层一致 | `pnpm store-test` | 23/23 |
 | 真实服务加载 + 注入 + 卸载 + `kb_store` 端到端 | `pnpm load-test` | 26/26 |
 | 面板路由 / 数据契约 / 鉴权 / 跟随指针 | `pnpm panel-test` | 16/16 |
-| 分发：自包含产物、单 spec 安装、五行解析、**http URL 在线安装** | `pnpm bundle-test` | 12/12 |
-| 发布闸门：版本/元数据/LICENSE、stale 产物、tarball 清单、无宿主包 | `pnpm release-check` | 31/31 |
+| 分发：自包含产物（vendor 随包）、单 spec 安装、五行解析、**http URL 在线安装** | `pnpm bundle-test` | 12/12 |
+| 发布闸门：版本/元数据/LICENSE、stale 产物、vendor 逐文件比对、tarball 清单、无宿主包 | `pnpm release-check` | 35/35 |
 | 真机：五层加载、面板入口、`read-only` 拒绝写入 | 手动（见 `AGI_STATE.md` 验证记录） | 通过（换位置与自包含安装待重启后真机确认） |
 | 真实 LLM 往返、审批 UI 交互 | — | ⛔ 有意未验证（`writeRequiresApproval: false`，该路径不触发） |
 

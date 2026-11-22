@@ -1,6 +1,6 @@
 # @pseudo-agi/bundle
 
-分发单元，也是**唯一需要安装的包**。它把五层实现 + 知识库位置库 + 面板客户端装进一个自包含产物里，所以一条 spec 就能装齐。
+鲸鱼娘 AGI 的分发单元，也是**唯一需要安装的包**。它把五层实现 + 知识库位置库 + 面板客户端装在一起，装它一个就够。
 
 ```json
 "dsh": {
@@ -9,41 +9,83 @@
 }
 ```
 
-## 为什么自包含
+## 为什么随包携带实现（vendor）
 
-插件管理器一次只接受**一条 spec**，而 `@pseudo-agi/*` 不在任何 registry 上。一个"只声明依赖"的 bundle 装上去之后必然 `ERR_PNPM_FETCH_404`（实测）。所以发布形态是：
+DSH 的 bundle 规范是**开箱即用**：从 Git 或 npm 安装时不会有构建步骤，`client.js` 也由宿主直接加载。所以：
 
 ```
-pseudo-agi-bundle-<version>.tgz
-└── package/
-    ├── package.json            # dependencies 是真实 semver，bundledDependencies 列出六个包
-    ├── cordis.patch.yml        # 五行，name 全部指向包内子路径
-    ├── layers/{memory,tools,scaffold,governance,panel}.js   # export * from '@pseudo-agi/<layer>'
-    ├── client.js               # 面板浏览器半侧（factory id = @pseudo-agi/bundle）
-    ├── locale/
-    └── node_modules/@pseudo-agi/{store,memory,tools,scaffold,governance,panel}/
+package/
+├── package.json          # 没有 dependencies —— 安装时不需要解析任何包名
+├── cordis.patch.yml      # 五行，name 全部指向包内子路径
+├── layers/{memory,tools,scaffold,governance,panel}.js   # 相对路径指向 vendor
+├── client.js             # 面板浏览器半侧（factory id = @pseudo-agi/bundle）
+├── locale/
+└── vendor/node_modules/@pseudo-agi/{store,memory,tools,scaffold,governance,panel}/
 ```
 
-`node_modules` 随 tarball 一起交付，pnpm 会保留（这正是 `bundledDependencies` 的含义）。
+这些生成文件**提交在仓库里**（见 [vendor/README.md](vendor/README.md)），由 `pnpm -r run build && pnpm vendor` 重建，`pnpm release-check` 会逐文件比对防止忘记重跑。
 
-## 为什么 patch 里写 `@pseudo-agi/bundle/layers/memory`
-
-插件 patch 的 `name` 是模块说明符，loader 用 `import.meta.resolve` 从 **profile 的 package scope** 解析（`cordis-plugin-loader` 的 `resolve.ts`）。自包含安装后 profile 里只有 `@pseudo-agi/bundle`，六个层包在它自己的 `node_modules` 里，裸包名因此解析不到；子路径从 profile 解析到 bundle，转发文件再从 bundle 目录解析到内置副本。见 [layers/README.md](layers/README.md)。
-
-`link:` 开发安装同样可用：那时 `@pseudo-agi/<layer>` 从 `packages/pseudo-agi-bundle/node_modules` 解析到 workspace 包。
-
-## 面板客户端
-
-浏览器半侧由本包提供（`./client`）而不是 `@pseudo-agi/panel`：客户端模块系统按 **Loader entry 名**对账包，读到的是这个包的 `dsh.client` 声明。代价是面板入口不能再靠删掉 patch 行来卸载——停用 `pseudo-agi-panel` 行只会让面板的数据接口 404，左栏入口仍在。
-
-## 构建与安装
+## 安装
 
 ```bash
-pnpm pack-bundle                  # → dist/pseudo-agi-bundle-<version>.tgz + .manifest.json
-pnpm add ./dist/pseudo-agi-bundle-0.1.0.tgz
-pnpm add https://example.com/pseudo-agi-bundle-0.1.0.tgz   # 在线（tarball URL）
+# npm（发布之后）
+pnpm add @pseudo-agi/bundle
+
+# 直接从 GitHub 安装（不需要构建，仓库里已带产物）
+pnpm add "github:<owner>/<repo>#<commit>&path:packages/pseudo-agi-bundle"
+
+# 发布产物 / GitHub Release 上的 tarball
+pnpm add https://github.com/<owner>/<repo>/releases/download/v0.1.0/pseudo-agi-bundle-0.1.0.tgz
 ```
 
-`pnpm bundle-test` 会打包、单 spec 安装、逐条验证五行解析与客户端半侧，并用本地 http 服务器验证 URL 安装。
+DSH 插件页的安装输入框接受同样的 spec（包名、绝对路径、tarball URL、Git 地址）。
 
-安装与验收见仓库根目录的 [docs/install.md](../../docs/install.md)。
+## 配置
+
+patch 里每行都带 `workspaceRoot: .`，那是**相对宿主进程 cwd** 的，必须覆盖成你的工程绝对路径。最小可用覆盖（写进 profile 的 `cordis.patch.yml`）：
+
+```yaml
+# 只覆盖需要的字段；config 是整份替换，不是深合并。
+- id: pseudo-agi-memory
+  name: '@pseudo-agi/bundle/layers/memory'
+  config:
+    workspaceRoot: /absolute/path/to/your/project
+    storeRoot: .pseudo-agi
+    root: .pseudo-agi/memory
+- id: pseudo-agi-tools
+  name: '@pseudo-agi/bundle/layers/tools'
+  config:
+    workspaceRoot: /absolute/path/to/your/project
+    storeRoot: .pseudo-agi
+    knowledgeRoots: [docs, .pseudo-agi/memory]
+    writeRoots: ['.']
+    writeRequiresApproval: false
+```
+
+完整五行与全部字段见包内的 [cordis.patch.yml](cordis.patch.yml)；逐字段说明见 [docs/install.md](../../docs/install.md) §4。
+
+## 使用
+
+装好并重启后，会话里会多出九个工具，左栏出现「鲸鱼娘 AGI」面板：
+
+- `memory_recall` / `memory_candidate` / `memory_commit` / `memory_forget` — 分层记忆
+- `kb_search` / `kb_read` — 带 `path:line` 的只读取证
+- `controlled_write` — 受 guard 与宿主文件策略约束的写入
+- `kb_store` — 查看或搬动知识库位置
+- `governance_report` — 本轮轨迹与指标
+
+```text
+kb_store({ action: "status" })                              # 知识库在哪
+kb_store({ action: "relocate", to: "/data/agi-kb" })        # 换盘（复制 + 校验 + 改指针）
+kb_store({ action: "rollback" })                            # 只改指针，不动数据
+```
+
+## 构建与发布
+
+```bash
+pnpm -r run build && pnpm vendor    # 重建 vendor/ 与 client.js（要提交）
+pnpm release-check                  # 校验自包含、行尾一致、无宿主包
+pnpm pack-bundle                    # 可分发 tgz + manifest（挂 Release 用）
+```
+
+安装与验收详见仓库根目录的 [docs/install.md](../../docs/install.md)，发布流程见 [docs/publishing.md](../../docs/publishing.md)。

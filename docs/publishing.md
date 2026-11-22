@@ -17,8 +17,9 @@ pnpm verify               # 五套测试 + release-check
 - 七包版本一致；`publishConfig.access=public`、`engines.node`、`author`、`LICENSE` 齐备；
 - 每个 `lib/` 里的 `.js` 都能在 `src/` 找到对应 `.ts`（**这一条抓到过真事故**：`scaffold` 的 `router.js` 在源码删除后仍被发布）；
 - 六个层包的 tarball 清单：必含 `package.json`/`README.md`/`LICENSE`/入口，禁含 `.map`、`node_modules/`、`dist/`、测试文件、`workspace:` 协议；
-- 组合包产物：自包含六个实现包、五行入口、`client.js`、`LICENSE`，且**不含任何 `@deepseek-ai/*`**；
-- 源码目录的 `prepublishOnly` 闸门在位。
+- 组合包产物：携带 `vendor/` 六个实现包、五行入口、`client.js`、`LICENSE`，且**不含任何 `@deepseek-ai/*`**；
+- `vendor/` 每个文件与编译产物逐字节一致（漏跑 `pnpm vendor` 会直接失败），`client.js` 与 `panel/client.js` 只差 factory id；
+- 组合包不声明任何依赖（安装时无需解析包名），`prepublishOnly` 检查生成物在位。
 
 ## 0.1 一次性：仓库地址与开源发布
 
@@ -41,13 +42,20 @@ pnpm pack-bundle
 gh release create v0.1.0 dist/pseudo-agi-bundle-0.1.0.tgz dist/pseudo-agi-bundle-0.1.0.manifest.json --generate-notes
 ```
 
-Release 上挂的 tgz 本身就是"在线安装"地址，使用者不必等 npm：
+三种"使用者安装"的地址，推荐按这个顺序对外公布：
 
 ```bash
+# 1) GitHub 仓库（最快可用，不需要 npm 发布，也不构建）
+pnpm add "github:<owner>/<repo>#<commit>&path:packages/pseudo-agi-bundle"
+
+# 2) Release 上的 tgz（可核对 sha256）
 pnpm add https://github.com/<owner>/<repo>/releases/download/v0.1.0/pseudo-agi-bundle-0.1.0.tgz
+
+# 3) npm 包名（发布之后）
+pnpm add @pseudo-agi/bundle
 ```
 
-`manifest.json` 里的 `sha256` 供使用者核对；插件页可以直接贴同一个 URL 安装。
+`manifest.json` 里的 `sha256` 供使用者核对；插件页可以直接贴上述任一 spec 安装。
 
 > 仓库里**不含** `.pseudo-agi/` 与 `AGI_STATE.md`：工作台、记忆、审计日志都是运行时数据（含本机绝对路径、端口、会话 id 与未公开的实验结论），由 `.gitignore` 整体排除。首次运行插件自行创建，想预置工作台就从 `templates/AGI_STATE.md` 复制。分工见 [agi-state.md](agi-state.md)。
 
@@ -77,26 +85,22 @@ pnpm --filter @pseudo-agi/governance publish --access public
 pnpm --filter @pseudo-agi/panel publish --access public
 ```
 
-## 3. 发布组合包（产物，不是源码目录）
+## 3. 发布组合包
+
+bundle 源码目录**本身就是可发布形态**（`vendor/` 与 `client.js` 已提交），所以两种方式都行：
 
 ```bash
+# 方式一：直接从包目录发布（会跑 prepublishOnly 检查生成物）
+pnpm --filter @pseudo-agi/bundle publish --access public
+
+# 方式二：发布 pack-bundle 的产物（可先核对 sha256，再挂 Release）
 pnpm pack-bundle
-# → dist/pseudo-agi-bundle-0.1.0.tgz + .manifest.json
 npm publish dist/pseudo-agi-bundle-0.1.0.tgz --access public
 ```
 
-**不要**在 `packages/pseudo-agi-bundle` 里跑 `pnpm publish`。原因有两层：
+`prepublishOnly` 会检查 `client.js` 与 `vendor/node_modules/@pseudo-agi/*` 是否在位，缺任何一个就拒绝发布（提示先跑 `pnpm -r run build && pnpm vendor`）。`npm publish <tarball>` 不跑生命周期脚本，所以产物发布不受影响。
 
-1. `client.js` 是 `pack-bundle` 生成的，源码树里没有，直接发会缺浏览器半侧；
-2. `bundledDependencies` 会让 `pnpm pack` 顺着 workspace 软链接展开依赖树，把宿主包一起打进去（实测出现过 `node_modules/@deepseek-ai/cosmokit/LICENSE`）。宿主包必须由使用方的 DSH 提供，不能随插件分发。
-
-为此 bundle 的 `prepublishOnly` 会直接拒绝源码目录发布：
-
-```json
-"scripts": { "prepublishOnly": "node ../../scripts/assert-packed-bundle.mjs" }
-```
-
-`npm publish <tarball>` 不跑生命周期脚本，所以产物正常发布。
+**不要**给 bundle 加回 `dependencies` 或 `bundledDependencies`：前者会让安装去 registry 解析 `@pseudo-agi/*`（404），后者会让 `pnpm pack` 顺着 workspace 软链接把宿主包打进 tarball（实测出现过 `node_modules/@deepseek-ai/cosmokit/LICENSE`）。宿主包必须由使用方的 DSH 提供。
 
 ## 4. 发布后验证
 
@@ -107,7 +111,8 @@ npm view @pseudo-agi/memory version
 # 干净目录里真装一次
 mkdir /tmp/dsh-online && cd /tmp/dsh-online
 pnpm init && pnpm add @pseudo-agi/bundle
-ls node_modules/@pseudo-agi/bundle/node_modules/@pseudo-agi   # 六个内置包
+ls node_modules/@pseudo-agi/bundle/vendor/node_modules/@pseudo-agi   # vendor 里的六个实现
+test -f node_modules/@pseudo-agi/bundle/client.js                    # 面板浏览器半侧
 ```
 
 然后在 DSH 里安装 `@pseudo-agi/bundle`（插件页输入包名即可，`install-spec` 同时接受包名、tarball URL、Git 地址与本地路径），重启后按 `docs/install.md` §5 逐条验收。
