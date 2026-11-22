@@ -2,7 +2,7 @@
 
 > 由模型（意识）在开工/收工时维护：这是"我正在做什么"，不是事实记忆。
 > 事实记忆在 `.pseudo-agi/memory/`，用 `memory_recall` 取；工具轨迹在 `.pseudo-agi/governance/*.jsonl`。
-> 最近更新：2026-11-22（四层真机闭环验证后）
+> 最近更新：2026-11-22（五层 + 管理面板真机验收后）
 
 ## 当前目标
 
@@ -24,17 +24,22 @@
 | 记忆 | `@pseudo-agi/memory` | ✅ 4 个工具；候选→提交→落盘→召回→每步注入 |
 | 手脚 | `@pseudo-agi/tools` | ✅ 3 个工具；`writeRequiresApproval: false`（无感），guard 围栏真机生效 |
 | 脚手架 | `@pseudo-agi/scaffold` | ✅ 每轮首步注入一次纪律；`inject: []`，与工具层解耦 |
-| 治理 | `@pseudo-agi/governance` | ✅ `governance_report` 可用；JSONL 已出现 `step`/`scaffold`/`tool` 行 |
+| 治理 | `@pseudo-agi/governance` | ✅ `governance_report` 可用；JSONL 已出现 `step`/`scaffold`/`tool`/`turn` 行 |
+| 面板 | `@pseudo-agi/panel` | ✅ 侧栏「鲸鱼娘 AGI」入口真机出现（用户确认）；`GET /pseudo-agi/api/state` 200 |
 
-工具面板共 8 个：`memory_recall`、`memory_candidate`、`memory_commit`、`memory_forget`、`kb_search`、`kb_read`、`controlled_write`、`governance_report`。
+伪AGI 自有工具共 8 个：`memory_recall`、`memory_candidate`、`memory_commit`、`memory_forget`、`kb_search`、`kb_read`、`controlled_write`、`governance_report`。
+
+> 口径提醒：面板返回的 `toolCount`（真机 15）取的是**宿主全部**工具注册表 `ctx.get('tools').definitions().length`，不是上面这 8 个。两个数字都对，别拿它们互相校验。
 
 ## 下一步（按优先级）
 
-1. **沉淀四层架构结论为记忆**：本轮 `memory_recall("四层 闭环 脚手架 治理")` 返回"未找到（扫描 3 条）"——三条记忆只覆盖 guard、两层验证、启动协议，没有一条讲清整体架构。知识库有缺口，先补。
-2. **验证 `turn` / `memory` 类 JSONL 行**：前者在轮末写，后者本轮已触发（未命中也会记录）。
-3. **跨会话连续性**：下次冷启动只靠本文件 + procedural 记忆能否恢复状态——本轮已算部分验证（开工先读本文件成功）。
-4. **补充文档**：把"写盘必须显式 workspaceRoot"这条教训写进 `docs/spec-compliance.md` 的缺陷清单。
-5. **评估 bundle 分发**：`pnpm pack` + `file:` 装一次，验证"npm 包 + cordis.patch.yml"这条分发路径（当前是 `link:` 四包）。
+1. **面板路由鉴权**：`GET /pseudo-agi/api/state` 无鉴权返回 200（含 `AGI_STATE.md` 全文与全部记忆标题），而 GUI 首页 `/` 返 401。先查清「prefix 路由不走 auth」是 DSH 既定契约还是缺口，再决定补鉴权还是记录为设计如此。
+2. **补充文档**：把"写盘必须显式 workspaceRoot"这条教训写进 `docs/spec-compliance.md` 缺陷清单；把 `sidebar.panellist` slot 约定补进文档（`kb_search` 扫 7 个文件未找到）。
+3. **跨会话连续性**：下次冷启动只靠本文件 + procedural 记忆能否恢复状态——已部分验证两次。
+4. **评估 bundle 分发**：`pnpm pack` + `file:` 装一次，验证"npm 包 + cordis.patch.yml"这条分发路径（当前是 `link:` 五包）。
+5. **沙箱**（见待决 2）：`ctx.sandbox` 仍未接。
+
+已完成（移出队列）：四层架构记忆已落盘 `mem-20261122-d9b9a84f`；`turn` 类 JSONL 行已在真机 events 中见到。
 
 ## 阻塞 / 待决
 
@@ -94,3 +99,12 @@
 - `scripts/panel-test.mjs`：真实 cordis + 假 webServer 驱动 `/state`，9/9 通过（含 404/405 与卸载撤销）。
 - profile 已 link 第 5 个包并新增 patch 行，`profile-check` 12/12。
 - 待验证（重启后）：侧栏出现鲸鱼图标，点击打开面板能看到实时数据。
+
+### 2026-11-22 · 面板真机验收通过（重启后第一轮）
+
+- **Client 侧**：用户确认左侧栏出现「鲸鱼娘 AGI」入口 —— 此前只有 `panel-test.mjs` 的 9/9 单测，这是首次真机渲染确认。
+- **Host 侧**：`GET /pseudo-agi/api/state` → 200、`errors: []`；`events` 含本轮真实行：`turn:1 step:1 scaffold injected:true`、`tool kb_read callId=call_00_HSs5WEPSZcCnv95wME7Y5313 isError:false`、`turn:1`、`turn:2 step:1`（08:09–08:10）。数据是实时的，不是占位。
+- **真机路由边界**：`POST /state` → 405；`GET /api/nope` → 404；`GET /api/state/`（尾斜杠）→ 404（`index.js:236-240` 只做精确等值 `state`）。与单测一致，尾斜杠 404 属已知边界而非缺陷。
+- **`toolCount: 15` 的解释**：取自宿主 `ctx.get('tools').definitions().length`（`index.js:186-188`），是全部工具注册表，与伪AGI 自有的 8 个不是同一口径，两个数字都不算错。
+- **profile 物证**：`cordis.patch.yml:37-84` 五层 insert 齐全；第 35-36 行「控制器与治理层先不启用」是过时注释，实际 scaffold 与 governance 都已启用并验证工作。
+- **新发现（未决，已列入下一步 1）**：GUI 首页 `/` 返 401，而 `/pseudo-agi/api/state` 返 200 无鉴权，会把 `AGI_STATE.md` 全文和全部记忆标题吐给任何本机请求方。需查清是否为 DSH prefix 路由的既定契约。
