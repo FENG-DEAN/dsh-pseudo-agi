@@ -126,7 +126,8 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 
 | 字段 | 默认 | 含义 |
 | --- | --- | --- |
-| `root` | `.pseudo-agi/governance` | JSONL 目录（每会话一个文件） |
+| `workspaceRoot` | `.` | `root` 解析基准。**宿主进程 cwd 通常不是工程目录，必须显式设置** |
+| `root` | `.pseudo-agi/governance` | JSONL 目录（相对 `workspaceRoot`） |
 | `maxSessions` | `256` | 内存指标表容量（LRU 淘汰） |
 | `maxRecentLines` | `50` | `governance_report` 返回的尾部行数 |
 | `journal` | `true` | `false` 时只留内存指标 |

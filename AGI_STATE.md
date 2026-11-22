@@ -71,3 +71,12 @@
 - profile 装配升级：memory + tools + scaffold + governance **四层全部 link 并写入 patch**，`pnpm profile-check` 11/11 通过。
 - 本地验证：smoke 25/25、load-test 18/18，其中新增断言「脚手架的注入文本里不含 `路由=`」。
 - 待真机验证（重启后）：纪律是否每轮首步出现一次、`governance_report` 是否可用、`.pseudo-agi/governance/*.jsonl` 是否真的被事件串起来。
+
+### 2026-11-22 · 发现并修复 governance 的 cwd 依赖
+
+- 重启后 `governance_report` 的内存指标正常（步 1、脚手架注入 1/1），但 `.pseudo-agi/governance/` 下没有任何 JSONL。
+- 原因：governance 用 `process.cwd()` 解析 `root`。宿主进程的 cwd 不是工程目录（很可能还是不可写的安装目录），`mkdir`/`append` 失败后被 `catch` 静默吞掉——只在日志里留一条 warn。
+- 修法：加 `workspaceRoot`（与 memory 一致），patch 里显式指向工程目录；`load-test` 的 governanceConfig 同步传临时目录，避免测试污染工作区。
+- **这是同一类缺陷的第二次出现**：任何写盘的插件都必须显式配置基准目录，绝不能用 `process.cwd()`。已写进 install.md 的配置表说明。
+- 本地验证：build 通过、smoke 25/25、load-test 18/18、profile-check 11/11。
+- 待验证（重启后）：`.pseudo-agi/governance/<sessionId>.jsonl` 出现 `step` / `scaffold` / `tool` / `turn` 四类行——那才是"事件串联闭环"的物证。

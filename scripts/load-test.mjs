@@ -87,7 +87,10 @@ const memoryConfig = resolveConfig(memory.Config, {
 })
 const toolsConfig = resolveConfig(tools.Config, { workspaceRoot: workspace, knowledgeRoots: ['docs'] })
 const scaffoldConfig = resolveConfig(scaffold.Config, { injectPerTurn: 1 })
-const governanceConfig = resolveConfig(governance.Config, { root: join(workspace, 'governance') })
+const governanceConfig = resolveConfig(governance.Config, {
+  workspaceRoot: workspace,
+  root: join(workspace, 'governance'),
+})
 
 const toolNames = () => app.tools.definitions().map(definition => definition.name).sort()
 

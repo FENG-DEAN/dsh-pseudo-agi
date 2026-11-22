@@ -8,7 +8,13 @@ import z from '@deepseek-ai/schemastery'
 
 /** Plugin configuration. */
 export interface GovernanceConfig {
-  /** Directory receiving one JSONL file per session. */
+  /**
+   * Base directory that `root` resolves against. Defaults to the process cwd,
+   * but the host process usually runs somewhere else (and often somewhere
+   * read-only), so a real deployment must set this explicitly.
+   */
+  readonly workspaceRoot: string
+  /** Directory receiving one JSONL file per session, relative to `workspaceRoot`. */
   readonly root: string
   /** Maximum sessions kept in the in-memory metric book. */
   readonly maxSessions: number
@@ -20,6 +26,7 @@ export interface GovernanceConfig {
 
 /** Schemastery schema; invalid config fails at load time. */
 export const Config: z<GovernanceConfig> = z.object({
+  workspaceRoot: z.string().default('.'),
   root: z.string().default('.pseudo-agi/governance'),
   maxSessions: z.number().default(256),
   maxRecentLines: z.number().default(50),
@@ -34,6 +41,7 @@ export function validateConfig(config: GovernanceConfig): void {
   const fail = (message: string): never => {
     throw new Error(`pseudo-agi-governance: ${message}`)
   }
+  if (config.workspaceRoot.trim().length === 0) fail('config.workspaceRoot must not be empty')
   if (config.root.trim().length === 0) fail('config.root must not be empty')
   for (const [name, value] of [
     ['maxSessions', config.maxSessions],

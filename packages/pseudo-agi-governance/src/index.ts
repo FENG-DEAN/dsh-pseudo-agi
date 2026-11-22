@@ -46,7 +46,10 @@ export const inject = ['tools']
 export function apply(ctx: Context, config: GovernanceConfig): void {
   validateConfig(config)
   const book = new MetricsBook(config.maxSessions)
-  const journal = new JsonlJournal(resolve(process.cwd(), config.root), message => {
+  // Resolve against the configured workspace, never against the host cwd: the
+  // host usually runs from its install directory, which may be read-only.
+  const journalRoot = resolve(resolve(config.workspaceRoot), config.root)
+  const journal = new JsonlJournal(journalRoot, message => {
     ctx.logger.warn(`pseudo-agi-governance: ${message}`)
   })
 

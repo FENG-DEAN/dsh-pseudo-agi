@@ -53,6 +53,7 @@ const expected = {
     requireEvidence: true,
   },
   '@pseudo-agi/governance': {
+    workspaceRoot: 'D:/Doc/AIDoc/Dsh_dev/dsh_agi_dev',
     root: '.pseudo-agi/governance',
     journal: true,
     maxSessions: 64,
