@@ -25,6 +25,14 @@
   ],
   "author": "FENG-DEAN <firebanyan@gmail.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FENG-DEAN/dsh-pseudo-agi.git"
+  },
+  "homepage": "https://github.com/FENG-DEAN/dsh-pseudo-agi#readme",
+  "bugs": {
+    "url": "https://github.com/FENG-DEAN/dsh-pseudo-agi/issues"
+  },
   "keywords": [
     "dsh",
     "deepseek-harness",
