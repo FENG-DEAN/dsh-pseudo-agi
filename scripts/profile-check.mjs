@@ -116,18 +116,18 @@ for (const [name, config] of Object.entries(expected)) {
 
 console.log('\n[3] patch 文件本身')
 
-await check('cordis.patch.yml 含 pseudo-agi 的 insert 行', async () => {
+await check('cordis.patch.yml 用 id 重述五行 config（插入由组合包负责）', async () => {
   const text = await readFile(`${profile}/cordis.patch.yml`, 'utf8')
-  if (!text.includes('- insert:')) throw new Error('missing "- insert:" block')
   for (const name of Object.keys(expected)) {
-    if (!text.includes(`"${name}"`)) throw new Error(`missing "${name}" row`)
+    const id = name.replace('@pseudo-agi/', 'pseudo-agi-')
+    if (!text.includes(`- id: ${id}`)) throw new Error(`missing "- id: ${id}" row`)
   }
   console.log(`       → ${text.split('\n').filter(line => line.includes('pseudo-agi')).length} 行涉及 pseudo-agi`)
 })
 
-await check('package.json 声明了两个 link 依赖', async () => {
+await check('package.json 声明了六个 link 依赖（五层 + 组合包）', async () => {
   const manifest = JSON.parse(await readFile(`${profile}/package.json`, 'utf8'))
-  for (const name of Object.keys(expected)) {
+  for (const name of [...Object.keys(expected), '@pseudo-agi/bundle']) {
     const specifier = manifest.dependencies?.[name]
     if (typeof specifier !== 'string' || !specifier.startsWith('link:')) {
       throw new Error(`${name} dependency is not a link: ${String(specifier)}`)
@@ -135,8 +135,16 @@ await check('package.json 声明了两个 link 依赖', async () => {
   }
 })
 
+await check('组合包已被 profile 选中（dsh.profile.bundles）', async () => {
+  const manifest = JSON.parse(await readFile(`${profile}/package.json`, 'utf8'))
+  const bundles = manifest.dsh?.profile?.bundles
+  if (!Array.isArray(bundles) || !bundles.includes('@pseudo-agi/bundle')) {
+    throw new Error('dsh.profile.bundles does not list @pseudo-agi/bundle')
+  }
+})
+
 let yamlLoaded = false
-await check('YAML 结构解析通过（insert 列表结构正确）', async () => {
+await check('YAML 结构解析通过（按 id 的 config 覆盖）', async () => {
   const localRequire = createRequire(new URL('../package.json', import.meta.url))
   const yaml = await import(pathToFileURL(localRequire.resolve('js-yaml')).href)
   const load = yaml.load ?? yaml.parse ?? yaml.default?.load
@@ -144,17 +152,16 @@ await check('YAML 结构解析通过（insert 列表结构正确）', async () =
   yamlLoaded = true
   const document = load(await readFile(`${profile}/cordis.patch.yml`, 'utf8'))
   if (!Array.isArray(document)) throw new Error('patch root must be an array')
-  const insert = document.find(entry => entry && Array.isArray(entry.insert))
-  if (!insert) throw new Error('no insert entry')
-  const ids = insert.insert.map(row => row.id)
-  for (const id of ['pseudo-agi-memory', 'pseudo-agi-tools']) {
-    if (!ids.includes(id)) throw new Error(`insert list missing id ${id}`)
+  const ids = document.map(entry => entry?.id).filter(Boolean)
+  for (const name of Object.keys(expected)) {
+    const id = name.replace('@pseudo-agi/', 'pseudo-agi-')
+    if (!ids.includes(id)) throw new Error(`patch missing id ${id}`)
   }
-  const memory = insert.insert.find(row => row.id === 'pseudo-agi-memory')
+  const memory = document.find(entry => entry?.id === 'pseudo-agi-memory')
   if (memory?.config?.workspaceRoot !== 'D:/Doc/AIDoc/Dsh_dev/dsh_agi_dev') {
     throw new Error(`parsed workspaceRoot mismatch: ${JSON.stringify(memory?.config)}`)
   }
-  const tools = insert.insert.find(row => row.id === 'pseudo-agi-tools')
+  const tools = document.find(entry => entry?.id === 'pseudo-agi-tools')
   if (!Array.isArray(tools?.config?.knowledgeRoots)) {
     throw new Error('parsed knowledgeRoots is not a list')
   }

@@ -1,17 +1,19 @@
 {
   "name": "@pseudo-agi/bundle",
   "version": "0.1.0",
-  "description": "Bundle of the four pseudo-AGI layers for the DeepSeek Harness: layered memory, controlled tools, consciousness scaffold, governance",
+  "description": "Whale-girl AGI for the DeepSeek Harness: layered memory, controlled hands, a consciousness scaffold, read-only governance, and a management panel",
   "type": "module",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "files": [
     "index.js",
     "cordis.patch.yml",
+    "locale",
     "README.md"
   ],
   "license": "MIT",
