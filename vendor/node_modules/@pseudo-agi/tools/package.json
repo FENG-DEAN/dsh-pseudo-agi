@@ -1,6 +1,6 @@
 {
   "name": "@pseudo-agi/tools",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Controlled hands for the DeepSeek Harness: readonly knowledge access plus guarded, approval-gated writes",
   "type": "module",
   "main": "lib/index.js",
@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.19.0",
-    "@pseudo-agi/store": "workspace:^0.4.1"
+    "@pseudo-agi/store": "workspace:^0.5.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.1.0",

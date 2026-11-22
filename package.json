@@ -1,6 +1,6 @@
 {
   "name": "@pseudo-agi/bundle",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Whale-girl AGI for the DeepSeek Harness: layered memory, controlled hands, a consciousness scaffold, read-only governance, and a management panel",
   "type": "module",
   "main": "index.js",

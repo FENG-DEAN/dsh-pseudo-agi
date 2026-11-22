@@ -46,15 +46,15 @@ pnpm verify            # build + smoke + store-test + load-test + panel-test + b
 
 ```bash
 pnpm pack-bundle
-# → dist/pseudo-agi-bundle-0.4.1.tgz + .manifest.json（sha256、包版本、文件数）；挂 Release 用
+# → dist/pseudo-agi-bundle-0.5.0.tgz + .manifest.json（sha256、包版本、文件数）；挂 Release 用
 ```
 
 四种安装入口：
 
 | 入口 | spec |
 | --- | --- |
-| 本地文件 | `pnpm add ./dist/pseudo-agi-bundle-0.4.1.tgz` |
-| 在线 tarball | `pnpm add https://example.com/pseudo-agi-bundle-0.4.1.tgz`（GitHub Release、静态站点、对象存储都可以） |
+| 本地文件 | `pnpm add ./dist/pseudo-agi-bundle-0.5.0.tgz` |
+| 在线 tarball | `pnpm add https://example.com/pseudo-agi-bundle-0.5.0.tgz`（GitHub Release、静态站点、对象存储都可以） |
 | GitHub 仓库 | `pnpm add "github:<owner>/<repo>#<commit>"`（仓库已带 `vendor/` 与 `client.js`，安装时不构建） |
 | 插件页 | 把上面任一 spec 贴进插件管理器的安装输入框（`parseInstallSpec` 认绝对路径、tarball URL、Git 地址、registry 包名） |
 
@@ -103,12 +103,12 @@ pnpm bundle-test
 // （用 bundle 的话走 §2.1，一条 spec 就够，不需要 overrides。）
 {
   "dependencies": {
-    "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.4.1.tgz",
-    "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.4.1.tgz",
-    "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.4.1.tgz",
-    "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.4.1.tgz",
-    "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.4.1.tgz",
-    "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.4.1.tgz"
+    "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.5.0.tgz",
+    "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.5.0.tgz",
+    "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.5.0.tgz",
+    "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.5.0.tgz",
+    "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.5.0.tgz",
+    "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.5.0.tgz"
   }
 }
 ```
@@ -117,12 +117,12 @@ pnpm bundle-test
 # profile/pnpm-workspace.yaml —— overrides 在 pnpm 11 已迁到这里；
 # package.json 里的 "pnpm.overrides" 会被忽略（只有一条警告）。
 overrides:
-  "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.4.1.tgz"
-  "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.4.1.tgz"
-  "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.4.1.tgz"
-  "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.4.1.tgz"
-  "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.4.1.tgz"
-  "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.4.1.tgz"
+  "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.5.0.tgz"
+  "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.5.0.tgz"
+  "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.5.0.tgz"
+  "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.5.0.tgz"
+  "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.5.0.tgz"
+  "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.5.0.tgz"
 ```
 
 `@pseudo-agi/store` 必须同时出现在两处：它是三个插件包的**运行时**依赖（不是 peer），缺了它 `memory`/`tools` 一加载就 `ERR_MODULE_NOT_FOUND`；而它们的 `^0.3.0` 只有 override 才能落回本地 tarball。bundle 不需要这一套——它自带 `vendor/`，装它一条 spec 即可（§2.1）。
@@ -301,36 +301,48 @@ kb_store({ action: "rollback" })                                               #
 - 搬出去之后 `kb_search` / `kb_read` 仍可读（知识根可以是绝对路径）；`controlled_write` 只在 `writeRoots` 也显式包含新位置时才可写——读得到不等于写得进。
 - `AGI_STATE.md` 与 `docs/` 不跟着搬：前者是工程状态，后者是工程文档。
 
-## 6.5 跨工作区（一份记忆 + 多项目手脚）
+## 6.5 跨工作区（一份意识 + 一份记忆 + 随项目的手脚）
 
-默认所有层只认 `workspaceRoot` 一个目录。要让同一个意识在多个项目间工作，把 `tools` 的 roots 配成多个绝对路径——`knowledgeRoots` 与 `writeRoots` 都是数组（`packages/pseudo-agi-tools/src/config.ts`）：
+分工：**意识**（模型）只有一个；**记忆与工作台**只有一份（在 `workspaceRoot`）；**手脚**（工具）自动跟随当前会话所在项目。所以换项目工作不需要改任何配置。
+
+### 自动跟随（默认开，`followSessionRoot: true`）
+
+三个工具执行时会读会话当前目录（`ctx.workingDirectory.ensure(agent, signal)`，见 `packages/pseudo-agi-tools/src/tools.ts` 的 `sessionRootOf`），把它加入**允许范围**：
+
+| 工具 | 相对路径落在哪 | 绝对路径 |
+| --- | --- | --- |
+| `kb_search` | 检索范围 = 配置的 `knowledgeRoots` + 会话目录 | — |
+| `kb_read` | 基准仍是 `workspaceRoot`（记忆/工作台的家） | 会话目录内可读 |
+| `controlled_write` | 基准仍是 `workspaceRoot` | 会话目录内可写 |
+
+这条"相对路径仍落 `workspaceRoot`"的规则（规则 A）是关键：**工作台与记忆永远是一份**，不会因为换个会话目录就漂到项目里去。
+
+会话目录不可用（目录被删、服务未挂载、`followSessionRoot: false`）时自动回退配置根，不阻塞任何调用。
+
+### 需要更多目录时（可选）
+
+`knowledgeRoots` / `writeRoots` 都是数组，可以再补绝对路径：
 
 ```yaml
 - id: pseudo-agi-tools
   name: '@pseudo-agi/bundle/layers/tools'
   config:
     workspaceRoot: C:/Users/<you>/dsh-pseudo-agi   # 记忆与工作台的固定家
-    knowledgeRoots: [
-      <project-a>/docs,
-      C:/Users/<you>/dsh-pseudo-agi/.pseudo-agi/memory,
-    ]
-    writeRoots: [
-      <project-a>,
-      C:/Users/<you>/dsh-pseudo-agi,
-    ]
+    knowledgeRoots: [<another-project>/docs]
+    writeRoots: [<another-project>]
     writeRequiresApproval: false   # config 整份替换，不重述会回到默认 true
 ```
 
-能力与边界（`scripts/load-test.mjs` 的「跨工作区」两条断言钉住了前三行）：
+### 能力与边界
 
 | 工具 | 跨项目？ | 行为 |
 | --- | --- | --- |
-| `kb_search` / `kb_read` | ✅ | 遍历 `knowledgeRoots` 里的所有目录；命中路径相对 workspace 给出，跨根时形如 `../<other>/file` |
-| `controlled_write` | ✅ | 只能写 `writeRoots` 内的路径 |
-| `memory_recall` / 记忆写入 | ❌ | 仍只有一份库（`workspaceRoot/.pseudo-agi`），不按项目分区 |
-| `AGI_STATE.md` / 治理日志 | ❌ | 只在 `workspaceRoot` |
+| `kb_search` / `kb_read` | ✅ | 检索范围含会话目录与所有 `knowledgeRoots`；命中路径相对 workspace 给出，跨根时形如 `../<other>/file` |
+| `controlled_write` | ✅ | 会话目录与所有 `writeRoots` 内可写；相对路径仍落 `workspaceRoot` |
+| `memory_recall` / 记忆写入 | ❌ | 一份库（`workspaceRoot/.pseudo-agi`），**按设计不按项目分区** |
+| `AGI_STATE.md` / 治理日志 | ❌ | 一份，只在家目录 |
 
-也就是说：**检索和手脚可以跨项目，记忆本体是一份**。想让旧项目的记忆也参与召回，把它的 `.pseudo-agi/memory/**` 并入当前库即可（同一套 Markdown 格式）。
+`scripts/load-test.mjs` 的「跨工作区」「手脚自动跟随会话项目」「规则 A」五条断言钉住了上面三行。
 
 ## 7. 回滚与取证
 

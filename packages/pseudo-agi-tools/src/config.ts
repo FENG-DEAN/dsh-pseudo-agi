@@ -45,6 +45,17 @@ export interface ToolsConfig {
   readonly deniedSegments: string[]
   /** File extensions that writes may never create. */
   readonly deniedExtensions: string[]
+  /**
+   * Let each call also reach the Session's current directory.
+   *
+   * A Session may be opened in a project directory that differs from the
+   * configured workspace root. When on (default), the working-directory
+   * service's current directory joins the allowed roots of `kb_search`,
+   * `kb_read`, and `controlled_write`, so the hands follow the project without
+   * any path configuration. Relative paths still resolve against
+   * `workspaceRoot`, which keeps the workbench and the knowledge base one tree.
+   */
+  readonly followSessionRoot: boolean
 }
 
 /** Schemastery schema; invalid config fails at load time. */
@@ -60,6 +71,7 @@ export const Config: z<ToolsConfig> = z.object({
   writeRequiresApproval: z.boolean().default(true),
   deniedSegments: z.array(z.string()).default(['.git', 'node_modules', '.ssh', '.env']),
   deniedExtensions: z.array(z.string()).default(['.exe', '.dll', '.so', '.dylib', '.bat', '.cmd', '.ps1']),
+  followSessionRoot: z.boolean().default(true),
 })
 
 /**

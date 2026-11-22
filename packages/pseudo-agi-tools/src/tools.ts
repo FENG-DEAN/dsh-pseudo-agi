@@ -41,6 +41,55 @@ export interface ToolDeps {
   readonly writeRoots: readonly string[]
 }
 
+/** The slice of `ctx.workingDirectory` this layer needs. */
+interface WorkingDirectoryProbe {
+  ensure?: (agent: unknown, signal?: AbortSignal) => Promise<string>
+}
+
+/**
+ * The Session's current directory, when this host exposes one.
+ *
+ * A Session can be opened in a project directory unrelated to the configured
+ * workspace root. Following it lets the hands reach the project with no path
+ * configuration at all; a missing service, a missing agent, or a failed
+ * `ensure` (the recorded directory vanished) simply leaves the configured
+ * roots in charge, so a minimal host keeps working.
+ *
+ * @param ctx - plugin context.
+ * @param config - validated configuration.
+ * @param exec - the tool execution, carrying the agent and its abort signal.
+ * @returns an absolute directory, or undefined.
+ */
+async function sessionRootOf(
+  ctx: Context,
+  config: ToolsConfig,
+  exec: { readonly agent?: unknown; readonly signal: AbortSignal },
+): Promise<string | undefined> {
+  if (!config.followSessionRoot || exec.agent === undefined) return undefined
+  try {
+    const get = ctx.get as unknown as (name: string, required?: false) => unknown
+    const service = get('workingDirectory', false) as WorkingDirectoryProbe | undefined
+    if (service === undefined || typeof service.ensure !== 'function') return undefined
+    const cwd = await service.ensure(exec.agent, exec.signal)
+    return typeof cwd === 'string' && cwd.trim().length > 0 ? cwd : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Merge one optional extra root into a configured list: order preserved,
+ * duplicates dropped (case-insensitive on Windows).
+ * @param roots - configured absolute roots.
+ * @param extra - an optional extra absolute root.
+ * @returns the merged list.
+ */
+function withSessionRoot(roots: readonly string[], extra: string | undefined): string[] {
+  if (extra === undefined) return [...roots]
+  const seen = new Set(roots.map(item => item.toLowerCase()))
+  return seen.has(extra.toLowerCase()) ? [...roots] : [...roots, extra]
+}
+
 /** One line hit of a knowledge-base search. */
 interface SearchHit {
   path: string
@@ -175,7 +224,7 @@ export function registerControlledTools(ctx: Context, deps: ToolDeps): void {
       // candidate still has to land inside the workspace or a declared root:
       // readable does not mean "anywhere on disk".
       const roots = args.roots === undefined
-        ? [...knowledgeRoots]
+        ? withSessionRoot(knowledgeRoots, await sessionRootOf(ctx, config, exec))
         : args.roots.map(candidate => resolveInRoots(root, knowledgeRoots, storePath(store, candidate)))
       const hits: SearchHit[] = []
       let scannedFiles = 0
@@ -260,8 +309,9 @@ export function registerControlledTools(ctx: Context, deps: ToolDeps): void {
     },
     async execute(args, exec) {
       exec.signal.throwIfAborted()
-      const absolute = resolveInRoots(root, knowledgeRoots, args.path)
-      const denial = denyReason(config, root, absolute, [root, ...knowledgeRoots])
+      const readableRoots = withSessionRoot(knowledgeRoots, await sessionRootOf(ctx, config, exec))
+      const absolute = resolveInRoots(root, readableRoots, args.path)
+      const denial = denyReason(config, root, absolute, [root, ...readableRoots])
       if (denial !== undefined) throw new Error(denial)
       const info = await stat(absolute)
       if (!info.isFile()) throw new Error(`不是普通文件：${args.path}`)
@@ -320,11 +370,15 @@ export function registerControlledTools(ctx: Context, deps: ToolDeps): void {
       exec.signal.throwIfAborted()
       // A relocated knowledge base only stays writable when its root is also a
       // configured write root; reading it elsewhere is not permission to write.
-      const absolute = resolveInRoots(root, writeRoots, args.path)
-      if (!isWritable(config, root, absolute, writeRoots)) {
+      // The Session's own directory joins those roots when the host exposes it,
+      // so writing inside the project needs no configuration — while a relative
+      // path still lands in `root`, which keeps the workbench in one place.
+      const writableRoots = withSessionRoot(writeRoots, await sessionRootOf(ctx, config, exec))
+      const absolute = resolveInRoots(root, writableRoots, args.path)
+      if (!isWritable(config, root, absolute, writableRoots)) {
         throw new Error(`目标不在允许的写入根目录内：${config.writeRoots.join(', ')}`)
       }
-      const denial = denyReason(config, root, absolute, [root, ...writeRoots])
+      const denial = denyReason(config, root, absolute, [root, ...writableRoots])
       if (denial !== undefined) throw new Error(denial)
 
       const mode = args.mode ?? 'overwrite'

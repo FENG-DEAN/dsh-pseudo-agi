@@ -93,6 +93,15 @@ const memoryConfig = resolveConfig(memory.Config, {
 // "意识全局、记忆一份、手脚跨项目" — without it the arrays are only untested code.
 const externalRoot = await mkdtemp(join(tmpdir(), 'pseudo-agi-external-'))
 await writeFile(join(externalRoot, 'external.md'), '# 外部项目\n\n跨工作区标记词：external-marker\n', 'utf8')
+// The Session's own project directory: a host may open a Session anywhere, and
+// the hands must follow it with no path configuration at all.
+const projectRoot = await mkdtemp(join(tmpdir(), 'pseudo-agi-project-'))
+await mkdir(join(projectRoot, 'docs'), { recursive: true })
+await writeFile(join(projectRoot, 'docs', 'session.md'), '# 会话项目\n\n会话项目标记词：session-marker\n', 'utf8')
+harnessForks.push(app.plugin({
+  name: 'fake-working-directory',
+  apply(ctx) { ctx.provide('workingDirectory', { ensure: async () => projectRoot }) },
+}))
 const toolsConfig = resolveConfig(tools.Config, {
   workspaceRoot: workspace,
   knowledgeRoots: ['docs', externalRoot],
@@ -260,6 +269,29 @@ try {
     })
     assert.equal(written.created, true)
     assert.equal(await readFile(join(externalRoot, 'written-by-tools.md'), 'utf8'), '外部根写入\n')
+  })
+
+  await check('手脚自动跟随会话项目：kb_search 命中会话 docs（无需配置）', async () => {
+    const value = await run('kb_search', { query: '会话项目标记词' })
+    assert.equal(value.found, true)
+    assert.ok(value.hits.some(hit => hit.path.includes('session.md')),
+      `expected the session project docs, got ${JSON.stringify(value.hits)}`)
+  })
+
+  await check('手脚自动跟随会话项目：controlled_write 写会话项目', async () => {
+    const written = await run('controlled_write', {
+      path: join(projectRoot, 'written-in-session.md'),
+      content: '会话内写入\n',
+    })
+    assert.equal(written.created, true)
+    assert.equal(await readFile(join(projectRoot, 'written-in-session.md'), 'utf8'), '会话内写入\n')
+  })
+
+  await check('规则 A：相对路径仍落在记忆/工作台的家，不随会话漂移', async () => {
+    await run('controlled_write', { path: 'AGI_STATE.md', content: '# 覆盖测试\n' })
+    assert.equal(await readFile(join(workspace, 'AGI_STATE.md'), 'utf8'), '# 覆盖测试\n')
+    assert.equal(existsSync(join(projectRoot, 'AGI_STATE.md')), false,
+      'a relative path must not drift into the session project')
   })
 
   await check('kb_read 读真实内容，越界被拒', async () => {
@@ -469,6 +501,7 @@ try {
   }
   await rm(workspace, { recursive: true, force: true })
   await rm(externalRoot, { recursive: true, force: true })
+  await rm(projectRoot, { recursive: true, force: true })
   if (movedParent !== null) await rm(movedParent, { recursive: true, force: true })
 }
 

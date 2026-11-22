@@ -30,7 +30,7 @@
 | --- | --- |
 | GitHub | `pnpm add github:FENG-DEAN/dsh-pseudo-agi` |
 | npm（发布后） | `pnpm add @pseudo-agi/bundle` |
-| tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.4.1.tgz` |
+| tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.5.0.tgz` |
 
 DSH 插件页的安装输入框接受同样的 spec（包名 / 绝对路径 / tarball URL / Git 地址）。仓库里已带构建产物（`vendor/` 与 `client.js`），**不会在你机器上重新构建**。
 
