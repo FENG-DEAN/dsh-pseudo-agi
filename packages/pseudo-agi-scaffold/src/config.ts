@@ -1,0 +1,72 @@
+/**
+ * Configuration for the consciousness scaffold.
+ *
+ * There is deliberately no routing keyword list here: the scaffold does not
+ * decide what the step is for. It only decides what discipline the model sees
+ * and records that it did so.
+ *
+ * @module @pseudo-agi/scaffold/config
+ */
+
+import z from '@deepseek-ai/schemastery'
+
+/** Plugin configuration. */
+export interface ScaffoldConfig {
+  /** Master switch; `false` loads the plugin as a no-op. */
+  readonly enabled: boolean
+  /** Maximum discipline messages injected per turn (default 1). */
+  readonly injectPerTurn: number
+  /** Add the "unsourced claims must be marked unverified" line. */
+  readonly requireEvidence: boolean
+  /** Discipline lines, injected verbatim as a bullet list. */
+  readonly discipline: string[]
+}
+
+/** Default discipline: the four rules an external device can enforce on a model. */
+const DEFAULT_DISCIPLINE = [
+  '每个事实性断言都要带来源：记忆 id，或 path:line。',
+  '检索结果为空时明确说「没找到」，不得用训练知识补全，也不得编造来源。',
+  '写操作前先说明改哪个文件、改什么、为什么；一次只改一件事。',
+]
+
+/** Appended when {@link ScaffoldConfig.requireEvidence} is on. */
+const UNVERIFIED_LINE = '未经检索的推断必须标注「未经验证」，并与已取证结论分开陈述。'
+
+/** Schemastery schema; invalid config fails at load time. */
+export const Config: z<ScaffoldConfig> = z.object({
+  enabled: z.boolean().default(true),
+  injectPerTurn: z.number().default(1),
+  requireEvidence: z.boolean().default(true),
+  discipline: z.array(z.string()).default(DEFAULT_DISCIPLINE),
+})
+
+/**
+ * Assert what Schemastery cannot express.
+ * @param config - the resolved configuration.
+ */
+export function validateConfig(config: ScaffoldConfig): void {
+  const fail = (message: string): never => {
+    throw new Error(`pseudo-agi-scaffold: ${message}`)
+  }
+  if (!Number.isInteger(config.injectPerTurn) || config.injectPerTurn < 0) {
+    fail('config.injectPerTurn must be a non-negative integer')
+  }
+  if (config.discipline.length === 0 && !config.requireEvidence) {
+    fail('config would inject an empty discipline list: enable requireEvidence or add lines')
+  }
+}
+
+/**
+ * Compose the discipline message for one turn.
+ * @param config - the resolved configuration.
+ * @returns the message text, marked as device-injected rather than a user request.
+ */
+export function disciplineText(config: ScaffoldConfig): string {
+  const lines = [...config.discipline]
+  if (config.requireEvidence) lines.push(UNVERIFIED_LINE)
+  return [
+    '[伪AGI·脚手架] 本轮纪律（装置注入，不是用户提出的新需求）：',
+    ...lines.map(line => `- ${line}`),
+    '这些纪律约束的是表达方式与取证习惯；做什么、怎么做仍由你判断。',
+  ].join('\n')
+}

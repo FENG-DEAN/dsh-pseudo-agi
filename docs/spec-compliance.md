@@ -19,7 +19,7 @@
 | "通过 `ctx.inject()` 把决策指令注入到当前 Agent 上下文" | `ctx.inject(deps, cb)` 是 **Cordis 的服务依赖注入**（等 `systemPrompt` 可用再回调），与消息无关。消息注入是 `agent.inject(UserMessage)`（投递到 next-step inbox）、`agent.steer()`（最近一步）、`agent.send/followup`，或在 `agent/pre-step` 里改写 `messages` | `agent/pre-step` 是 waterfall，直接返回 `{ kind: 'enter', messages: [...admitted, directive] }`。`ctx.inject(['systemPrompt'], ...)` 只用来挂可选的 prompt 注册 |
 | "审批走 `ctx.approval`" | 工具管线里正确姿势是 `tools/pre-execute` 返回 `{ kind: 'ask', reason, displayReason }`，由 `ctx.approval.request()` 裁决；直接在工具体里调 `approval.request()` 会绕过管线契约 | **不在工具体里调 approval**，只在 pre-execute 返回 `ask`；无归属 agent 时 fail-closed 为 `deny` |
 | "`ctx.tools.guard()` 单调否决" | 正确。签名 `(exec: Readonly<ToolExecution>) => string \| ToolGuardDenial \| undefined`，**同步**，跑在所有 pre-execute 之后、工具体之前 | guard 只做同步的路径字符串判定；符号链接/存在性在工具体内 async 复核 |
-| "`agent/pre-step` 事件" | 存在，waterfall，payload = `{ agent, messages, turn, step, signal, modelSelection }`，返回 `PreStepDecision` | 控制器先 `await next()` 再追加，绝不 veto 原生决策 |
+| "`agent/pre-step` 事件" | 存在，waterfall，payload = `{ agent, messages, turn, step, signal, modelSelection }`，返回 `PreStepDecision` | 脚手架先 `await next()` 再追加，绝不 veto 原生决策 |
 | "工具用 `ctx.tools.register(defineTool(...))`" | 正确，但定义必须含 `output: { schema, render }`，且 `render` 返回 `ContentBlock[]` | 全部工具都声明了 `output` |
 | "沙箱走 `ctx.sandbox`，默认 workspace-write，升权必须显式审批并携带新的 mode" | 沙箱是独立服务/策略插件（`dsh-sandbox`、`dsh-sandbox-policy`、`dsh-fs-sandbox` 等）的领域，工具侧没有"静默提权 + 带新 mode 的审批"这一公开契约 | **本工程不调用 `ctx.sandbox`**，改用"路径围栏 + guard + 审批"的显式降级，并在下面第 4 节写明它不是沙箱 |
 | "bundle = npm 包 + `cordis.patch.yml`，`package.json` 声明 `dsh.bundle.patch`" | 正确 | `packages/pseudo-agi-bundle/package.json` 的 `dsh.bundle.patch` 指向同目录 `cordis.patch.yml`，patch 行形态为 `- insert: [...]`，与 `dsh-cua-bundle` 一致 |
@@ -44,7 +44,7 @@
 | 项 | 状态 |
 | --- | --- |
 | 四包 `tsc` 编译 | ✅ 通过 |
-| 27 项纯逻辑（格式往返、召回、候选提交、预算、路由、围栏、指标、JSONL） | ✅ 通过 |
+| 25 项纯逻辑（格式往返、召回、候选提交、预算、脚手架纪律、围栏、指标、JSONL） | ✅ 通过 |
 | 真实 `SystemPrompt` + `ToolsService` 下加载四层、注册 8 个工具 | ✅ 通过 |
 | `checkGuards()` 单调否决（越界/禁止段/禁止扩展名） | ✅ 通过 |
 | 工具体真实读写与记忆闭环 | ✅ 通过 |
@@ -78,7 +78,7 @@
 | 威胁 | 缓解 | 残留风险 |
 | --- | --- | --- |
 | 错误记忆被每轮重复注入 | 候选 → 证据校验 → 提交三阶段；置信度下限；`working.md` 可见 | 证据本身可能是错的（引用了一个错误文件）；需要人工抽查 |
-| 模型用训练知识补全"没找到" | 召回/检索返回 `found: false` + 明确 note；控制器注入"不得补全"；注入块首句写明"证据不足必须声明" | 模型仍可能违反指令，只能靠治理指标发现（记忆命中率/工具失败率） |
+| 模型用训练知识补全"没找到" | 召回/检索返回 `found: false` + 明确 note；脚手架注入"不得补全"；注入块首句写明"证据不足必须声明" | 模型仍可能违反指令，只能靠治理指标发现（记忆命中率/工具失败率） |
 | 写操作越权 | `writeRoots` + denied 段/扩展名 + 同步 guard + 审批 + 工具体复核 | 审批被点"同意"时仍会写；用户是最后一环 |
 | 审批被 guard 翻案 | guard 是单调否决，审批只作用于"这一次调用" | 无 |
 | 工具卸载后残留能力 | 工具、guard、监听全部随 Fiber 回收 | 已写出的文件不回收（本来就是产物） |
@@ -87,6 +87,6 @@
 ## 8. 明确的能力边界
 
 - 不会在模型参数之外"学习"：记忆是检索增强，不是权重更新。
-- 没有自主目标：路由只影响"先取证还是先动手"，不产生新任务。
+- 没有自主目标：脚手架只注入纪律，不产生任务；做什么仍由模型判断。
 - 不能绕过 guard：没有提权通道。
 - 不能自证正确：治理层只统计，不判定事实真伪。

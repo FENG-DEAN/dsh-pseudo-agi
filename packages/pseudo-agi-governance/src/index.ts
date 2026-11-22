@@ -6,8 +6,9 @@
  *
  * - It cannot become a failure mode of the agent. Every listener is wrapped,
  *   and the journal swallows its own errors after the first report.
- * - It sees exactly what the other layers did (routes, recalls, tool outcomes),
- *   because those layers report on the event bus rather than by direct calls.
+ * - It sees exactly what the other layers did (scaffold injections, recalls,
+ *   tool outcomes), because those layers report on the event bus rather than by
+ *   direct calls. This is the "events connect the loop" half of the architecture.
  *
  * The JSONL journal is flushed on unload through `ctx.effect`, so a plugin
  * reload cannot leave a half-written queue behind.
@@ -19,8 +20,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { resolve } from 'node:path'
 import type {} from '@deepseek-ai/dsh-tools'
 // Type-only: event vocabulary published by the other layers.
-import type {} from '@pseudo-agi/controller/events'
 import type {} from '@pseudo-agi/memory/events'
+import type {} from '@pseudo-agi/scaffold/events'
 
 import { Config, validateConfig } from './config.js'
 import type { GovernanceConfig } from './config.js'
@@ -128,17 +129,14 @@ export function apply(ctx: Context, config: GovernanceConfig): void {
     })
   })
 
-  ctx.on('pseudo-agi/controller-decision', (payload) => {
+  ctx.on('pseudo-agi/scaffold-step', (payload) => {
     const metrics = touch(payload.sessionId)
-    metrics.controllerDecisions++
-    if (payload.injected) metrics.controllerInjections++
-    metrics.routes[payload.route] = (metrics.routes[payload.route] ?? 0) + 1
-    record(payload.sessionId, 'route', {
-      route: payload.route,
-      reason: payload.reason,
-      injected: payload.injected,
+    metrics.scaffoldSteps++
+    if (payload.injected) metrics.scaffoldInjections++
+    record(payload.sessionId, 'scaffold', {
       turn: payload.turn,
       step: payload.step,
+      injected: payload.injected,
     })
   })
 

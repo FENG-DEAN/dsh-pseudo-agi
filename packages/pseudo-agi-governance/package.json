@@ -27,14 +27,14 @@
     "@deepseek-ai/cordis": "~4.1.0",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.5",
     "@deepseek-ai/dsh-util-values": "0.2.2-rc.5",
-    "@pseudo-agi/controller": "^0.1.0",
-    "@pseudo-agi/memory": "^0.1.0"
+    "@pseudo-agi/memory": "^0.1.0",
+    "@pseudo-agi/scaffold": "^0.1.0"
   },
   "peerDependenciesMeta": {
-    "@pseudo-agi/controller": {
+    "@pseudo-agi/memory": {
       "optional": true
     },
-    "@pseudo-agi/memory": {
+    "@pseudo-agi/scaffold": {
       "optional": true
     }
   },
@@ -42,8 +42,8 @@
     "@deepseek-ai/cordis": "~4.1.0",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.5",
     "@deepseek-ai/dsh-util-values": "0.2.2-rc.5",
-    "@pseudo-agi/controller": "workspace:*",
     "@pseudo-agi/memory": "workspace:*",
+    "@pseudo-agi/scaffold": "workspace:*",
     "@types/node": "^22.10.2",
     "typescript": "^5.7.2"
   },

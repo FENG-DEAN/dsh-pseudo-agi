@@ -47,6 +47,17 @@ const expected = {
     knowledgeRoots: ['docs', '.pseudo-agi/memory'],
     writeRoots: ['.'],
   },
+  '@pseudo-agi/scaffold': {
+    enabled: true,
+    injectPerTurn: 1,
+    requireEvidence: true,
+  },
+  '@pseudo-agi/governance': {
+    root: '.pseudo-agi/governance',
+    journal: true,
+    maxSessions: 64,
+    maxRecentLines: 40,
+  },
 }
 
 console.log('\n[1] 从 profile 的解析根加载包')

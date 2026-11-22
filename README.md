@@ -1,31 +1,32 @@
 # 伪AGI · DSH 插件工程
 
-四个**相互独立、可单独卸载**的 DSH（DeepSeek Harness）插件，通过 Cordis 生命周期、事件、上下文注入串成一个闭环：
+三个**相互独立、可单独卸载**的 DSH 插件，加一个只读治理层，通过 Cordis 生命周期、事件、上下文注入串成闭环。
+
+**角色分配是这套东西的前提：意识就是模型（不是插件）；插件只提供意识自己做不到的事——改自己的上下文、跨步持久化、强制边界、留下轨迹。**
 
 ```
 用户输入
   → DSH 原生 Agent Loop
-  → agent/pre-step  ──► controller：选路由（direct / recall-first / act-with-approval / clarify）
-                      └► memory：按预算重算本步注入块
+  → agent/pre-step ──► scaffold：本轮首步注入一条纪律（不路由、不选工具）
+                    └► memory：按预算重算本步注入块
   → 系统提示词装配（memory 的 systemPrompt.context）
-  → 模型决定调用工具
-  → tools/pre-execute ──► tools：写操作返回 ask（审批）
+  → 模型判断这一步做什么、调哪个工具
+  → tools/pre-execute ──► tools：写操作按配置决定是否 ask（当前关闭）
   → tools.guard()     ──► tools：单调否决（路径越界 / 禁止段 / 禁止扩展名）
   → 工具执行 ──► memory_recall / kb_search / kb_read / controlled_write
-  → tools/result ──► governance：记录三元组；controller：记下"检索为空"
-  → agent/turn-stopping ──► memory：写 working.md；governance：轮次结束
-                      └► controller（可选）：一次反思注入
+  → tools/result ──► governance：记录工具三元组
+  → agent/turn-stopping ──► memory：刷新 working.md（仅变化时）；governance：记轮次
 ```
 
-> 关键点：**没有"AGI 插件"**。控制器只做路由与策略注入，记忆是 Markdown 真源 + 预算召回，手脚是带 guard/审批的工具注册，治理只观察。四者任一切除，其余仍可运行。
+> 关键点：**没有"AGI 插件"，也没有"控制器"**。判断权归模型；scaffold 只注入纪律并留痕，memory 是 Markdown 真源 + 预算召回，tools 是带 guard 边界的手脚，governance 只观察。四层任一切除，其余仍可运行。
 
 ## 目录
 
 | 路径 | 作用 |
 | --- | --- |
 | [packages/pseudo-agi-memory](packages/pseudo-agi-memory) | 分层记忆：工作 / 情景 / 语义 / 程序；Markdown 真源；`memory_recall`、`memory_candidate`、`memory_commit`、`memory_forget` |
-| [packages/pseudo-agi-tools](packages/pseudo-agi-tools) | 受控手脚：`kb_search`、`kb_read`、`controlled_write` + `ctx.tools.guard()` + 审批 |
-| [packages/pseudo-agi-controller](packages/pseudo-agi-controller) | 意识层：`agent/pre-step` 路由 + 每步一条受限指令 |
+| [packages/pseudo-agi-tools](packages/pseudo-agi-tools) | 受控手脚：`kb_search`、`kb_read`、`controlled_write` + `ctx.tools.guard()` |
+| [packages/pseudo-agi-scaffold](packages/pseudo-agi-scaffold) | 意识脚手架：每轮首步注入纪律 + 发 `scaffold-step` 事件；**不做路由、不选工具** |
 | [packages/pseudo-agi-governance](packages/pseudo-agi-governance) | 治理层：只读观察器 + 指标 + JSONL 审计 + `governance_report` |
 | [packages/pseudo-agi-bundle](packages/pseudo-agi-bundle) | 分发单元：`package.json` 的 `dsh.bundle.patch` + `cordis.patch.yml` |
 | [docs/architecture.md](docs/architecture.md) | 事件流、注册/释放清单、与 DSH 契约的对应关系 |
@@ -63,7 +64,7 @@ pnpm typecheck
 
 ## 这个方案能做到 / 明确做不到
 
-**能做到**：跨会话的 Markdown 记忆与预算内注入；带来源的召回；写操作的审批与单调否决；每步可审计的路由决策；指标与 JSONL 回放。
+**能做到**：跨会话的 Markdown 记忆与预算内注入；带来源的召回；路径边界由 guard 单调否决；每轮可审计的纪律注入与工具轨迹；指标与 JSONL 回放。
 
 **做不到**：模型参数之外的持续学习、自主目标、绕过 guard 的提权、在 `node:vm` 里假装安全。所有能力都锁在"可卸载、可撤销、可审计"的边界内——这正是它叫"伪AGI"的原因。
 

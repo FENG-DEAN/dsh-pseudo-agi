@@ -1,7 +1,7 @@
 {
-  "name": "@pseudo-agi/controller",
+  "name": "@pseudo-agi/scaffold",
   "version": "0.1.0",
-  "description": "Event-driven routing controller for the DeepSeek Harness: decides recall / act / answer and injects one bounded directive per step",
+  "description": "Consciousness scaffold for the pseudo-AGI: injects one per-turn discipline message and publishes step events. It never routes, never chooses tools.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -30,14 +30,12 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.1.0",
     "@deepseek-ai/dsh-agent": "0.2.2-rc.5",
-    "@deepseek-ai/dsh-llm": "0.2.2-rc.5",
-    "@deepseek-ai/dsh-tools": "0.2.2-rc.5"
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.5"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "~4.1.0",
     "@deepseek-ai/dsh-agent": "0.2.2-rc.5",
     "@deepseek-ai/dsh-llm": "0.2.2-rc.5",
-    "@deepseek-ai/dsh-tools": "0.2.2-rc.5",
     "@types/node": "^22.10.2",
     "typescript": "^5.7.2"
   },

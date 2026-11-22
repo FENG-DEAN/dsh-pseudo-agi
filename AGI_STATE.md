@@ -62,3 +62,12 @@
 2. **干活**：检索用 `kb_search`（结果必须带 `path:line`，没有就回答"没找到"）；写入用 `controlled_write`（无感，`guard` 兜底路径边界）。
 3. **收工**：追加"验证记录"，改写"下一步"，然后 `git add -A && git commit`。
 4. **不做**：不用关键词控制器替我决定路由；不把未确认的推断写进 `semantic` 层（先 `memory_candidate`，想清楚再 `memory_commit`）。
+
+### 2026-11-22 · 控制器改造为脚手架，四层齐装
+
+- `pseudo-agi-controller` → **`pseudo-agi-scaffold`**：`router.ts` 整体删除（关键词表、`decideRoute`、`lastUserText` 全部移除）。现在只做两件事：每轮首步注入一条纪律（`agent/pre-step`，先 `await next()` 再追加）、发 `pseudo-agi/scaffold-step` 事件。
+- 判定写进代码注释与文档：**"这一步做什么"属于模型的判断，插件不许碰**。脚手架不读用户文本、不看工具列表。
+- 事件与指标改名：`pseudo-agi/controller-decision` → `pseudo-agi/scaffold-step`；governance 的 `controllerSteps/Injections` → `scaffoldSteps/Injections`，无意义 `routes` 字段删除。
+- profile 装配升级：memory + tools + scaffold + governance **四层全部 link 并写入 patch**，`pnpm profile-check` 11/11 通过。
+- 本地验证：smoke 25/25、load-test 18/18，其中新增断言「脚手架的注入文本里不含 `路由=`」。
+- 待真机验证（重启后）：纪律是否每轮首步出现一次、`governance_report` 是否可用、`.pseudo-agi/governance/*.jsonl` 是否真的被事件串起来。

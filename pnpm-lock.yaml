@@ -20,43 +20,18 @@ importers:
 
   packages/pseudo-agi-bundle:
     dependencies:
-      '@pseudo-agi/controller':
-        specifier: workspace:^0.1.0
-        version: link:../pseudo-agi-controller
       '@pseudo-agi/governance':
         specifier: workspace:^0.1.0
         version: link:../pseudo-agi-governance
       '@pseudo-agi/memory':
         specifier: workspace:^0.1.0
         version: link:../pseudo-agi-memory
+      '@pseudo-agi/scaffold':
+        specifier: workspace:^0.1.0
+        version: link:../pseudo-agi-scaffold
       '@pseudo-agi/tools':
         specifier: workspace:^0.1.0
         version: link:../pseudo-agi-tools
-
-  packages/pseudo-agi-controller:
-    dependencies:
-      '@deepseek-ai/schemastery':
-        specifier: ~3.19.0
-        version: 3.19.0
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: ~4.1.0
-        version: 4.1.0
-      '@deepseek-ai/dsh-agent':
-        specifier: 0.2.2-rc.5
-        version: 0.2.2-rc.5(ace02401f24bb9eeec7666ff73a939e9)
-      '@deepseek-ai/dsh-llm':
-        specifier: 0.2.2-rc.5
-        version: 0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-error@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0))
-      '@deepseek-ai/dsh-tools':
-        specifier: 0.2.2-rc.5
-        version: 0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-agent@0.2.2-rc.5(ace02401f24bb9eeec7666ff73a939e9))(@deepseek-ai/dsh-llm@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-error@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)))(@deepseek-ai/dsh-scope@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0))(@deepseek-ai/dsh-session@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-error@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0))(@deepseek-ai/dsh-scope@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)))(@deepseek-ai/dsh-system-prompt@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-llm@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-error@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)))(@deepseek-ai/dsh-scope@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)))(@deepseek-ai/dsh-user-approval@0.2.2-rc.5(6bc0df7c1c6241d2c25432bbef8b9e21))
-      '@types/node':
-        specifier: ^22.10.2
-        version: 22.20.5
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
 
   packages/pseudo-agi-governance:
     dependencies:
@@ -73,12 +48,12 @@ importers:
       '@deepseek-ai/dsh-util-values':
         specifier: 0.2.2-rc.5
         version: 0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)
-      '@pseudo-agi/controller':
-        specifier: workspace:*
-        version: link:../pseudo-agi-controller
       '@pseudo-agi/memory':
         specifier: workspace:*
         version: link:../pseudo-agi-memory
+      '@pseudo-agi/scaffold':
+        specifier: workspace:*
+        version: link:../pseudo-agi-scaffold
       '@types/node':
         specifier: ^22.10.2
         version: 22.20.5
@@ -107,6 +82,28 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: 0.2.2-rc.5
         version: 0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-agent@0.2.2-rc.5(ace02401f24bb9eeec7666ff73a939e9))(@deepseek-ai/dsh-llm@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-error@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)))(@deepseek-ai/dsh-scope@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0))(@deepseek-ai/dsh-session@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-error@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0))(@deepseek-ai/dsh-scope@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)))(@deepseek-ai/dsh-system-prompt@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-llm@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-error@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)))(@deepseek-ai/dsh-scope@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)))(@deepseek-ai/dsh-user-approval@0.2.2-rc.5(6bc0df7c1c6241d2c25432bbef8b9e21))
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  packages/pseudo-agi-scaffold:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: ~3.19.0
+        version: 3.19.0
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: ~4.1.0
+        version: 4.1.0
+      '@deepseek-ai/dsh-agent':
+        specifier: 0.2.2-rc.5
+        version: 0.2.2-rc.5(ace02401f24bb9eeec7666ff73a939e9)
+      '@deepseek-ai/dsh-llm':
+        specifier: 0.2.2-rc.5
+        version: 0.2.2-rc.5(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-error@0.2.2-rc.5(@deepseek-ai/cordis@4.1.0))
       '@types/node':
         specifier: ^22.10.2
         version: 22.20.5

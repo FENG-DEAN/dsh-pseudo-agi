@@ -1,7 +1,7 @@
 {
   "name": "@pseudo-agi/bundle",
   "version": "0.1.0",
-  "description": "Bundle of the four pseudo-AGI layers for the DeepSeek Harness: memory, controlled tools, routing controller, governance",
+  "description": "Bundle of the four pseudo-AGI layers for the DeepSeek Harness: layered memory, controlled tools, consciousness scaffold, governance",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -21,9 +21,9 @@
     }
   },
   "dependencies": {
-    "@pseudo-agi/controller": "workspace:^0.1.0",
     "@pseudo-agi/governance": "workspace:^0.1.0",
     "@pseudo-agi/memory": "workspace:^0.1.0",
+    "@pseudo-agi/scaffold": "workspace:^0.1.0",
     "@pseudo-agi/tools": "workspace:^0.1.0"
   }
 }

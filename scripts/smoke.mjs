@@ -22,7 +22,7 @@ import {
   tokenize,
 } from '../packages/pseudo-agi-memory/lib/store.js'
 import { fitWithinBudget, estimateTokens } from '../packages/pseudo-agi-memory/lib/budget.js'
-import { decideRoute, directiveText, lastUserText } from '../packages/pseudo-agi-controller/lib/router.js'
+import { Config as ScaffoldConfig, disciplineText, validateConfig as validateScaffoldConfig } from '../packages/pseudo-agi-scaffold/lib/config.js'
 import { denyReason, isWritable, isWithin, resolveInside } from '../packages/pseudo-agi-tools/lib/workspace.js'
 import { JsonlJournal, MetricsBook } from '../packages/pseudo-agi-governance/lib/metrics.js'
 
@@ -223,51 +223,34 @@ try {
     assert.ok(estimateTokens('中文'.repeat(30)) >= 30)
   })
 
-  console.log('\n[5] 控制器路由')
+  console.log('\n[5] 脚手架纪律（纯函数，无路由）')
 
-  const userMessage = (text) => ({ role: 'user', content: [{ type: 'text', text }] })
-  const base = {
-    hasRecallTool: true,
-    hasWriteTool: true,
-    requireEvidence: true,
-    recallKeywords: ['查', '检索', '文档', '记忆'],
-    writeKeywords: ['写', '创建', '修改', '删除'],
-    minPromptChars: 8,
-  }
-
-  await check('lastUserText 取最后一条用户消息的文本块', () => {
-    const text = lastUserText([userMessage('第一条'), { role: 'assistant', content: [] }, userMessage('第二条')])
-    assert.equal(text, '第二条')
-    assert.equal(lastUserText([userMessage('')]), '')
-  })
-
-  await check('检索意图 → recall-first，并带“没找到就说没找到”', () => {
-    const decision = decideRoute({ ...base, text: '查一下文档里审批是怎么做的' })
-    assert.equal(decision.route, 'recall-first')
-    assert.ok(decision.directives.some(line => line.includes('没找到')))
-  })
-
-  await check('写意图 → act-with-approval，并禁止绕审批', () => {
-    const decision = decideRoute({ ...base, text: '帮我把这个文件修改一下' })
-    assert.equal(decision.route, 'act-with-approval')
-    assert.ok(decision.directives.some(line => line.includes('不要换一条路径绕过审批')))
-  })
-
-  await check('短输入 → clarify，不猜目标', () => {
-    const decision = decideRoute({ ...base, text: '嗯?' })
-    assert.equal(decision.route, 'clarify')
-  })
-
-  await check('工具不可见时降级为 direct 并要求标注未经验证', () => {
-    const decision = decideRoute({ ...base, hasRecallTool: false, text: '查一下文档里审批是怎么做的' })
-    assert.equal(decision.route, 'direct')
-    assert.ok(decision.directives.some(line => line.includes('未经验证')))
-  })
-
-  await check('注入文本标明“不是新需求”', () => {
-    const text = directiveText(decideRoute({ ...base, text: '普通问题请直接回答' }))
-    assert.match(text, /路由=direct/)
+  await check('默认纪律覆盖取证、来源、写前说明', () => {
+    const config = ScaffoldConfig['~standard'].validate({}).value
+    const text = disciplineText(config)
+    assert.match(text, /本轮纪律/)
+    assert.match(text, /带来源/)
+    assert.match(text, /没找到/)
+    assert.match(text, /一次只改一件事/)
     assert.match(text, /不是用户提出的新需求/)
+    assert.match(text, /未经验证/)
+  })
+
+  await check('纪律不包含任何路由判断', () => {
+    const config = ScaffoldConfig['~standard'].validate({}).value
+    const text = disciplineText(config)
+    assert.ok(!text.includes('路由='), 'scaffold must not classify the step')
+    assert.ok(!/先调用|再调用/.test(text), 'scaffold must not order tool calls')
+  })
+
+  await check('关掉 requireEvidence 后不再追加未验证条款', () => {
+    const config = ScaffoldConfig['~standard'].validate({ requireEvidence: false }).value
+    assert.ok(!disciplineText(config).includes('未经验证'))
+  })
+
+  await check('非法 injectPerTurn 在加载期失败', () => {
+    const config = ScaffoldConfig['~standard'].validate({}).value
+    assert.throws(() => validateScaffoldConfig({ ...config, injectPerTurn: -1 }), /non-negative integer/)
   })
 
   console.log('\n[6] 路径围栏（guard 用的同步判定）')
@@ -303,13 +286,14 @@ try {
     first.toolFailures = 1
     first.memoryRecalls = 2
     first.memoryHits = 1
-    first.routes.recall = 3
+    first.scaffoldSteps = 3
+    first.scaffoldInjections = 2
     book.of('s2')
     book.of('s3')
     const snapshot = book.snapshot(10)
     assert.equal(snapshot.length, 2)
     assert.ok(!snapshot.some(metrics => metrics.sessionId === 's1'))
-    assert.ok(snapshot.every(metrics => typeof metrics.routes === 'object'))
+    assert.ok(snapshot.every(metrics => typeof metrics.scaffoldSteps === 'number'))
   })
 
   await check('JSONL 写入有序、可读回、尾部截断', async () => {

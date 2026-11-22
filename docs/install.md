@@ -9,12 +9,12 @@
 
 ```bash
 pnpm install
-pnpm -r run build      # 顺序由依赖图决定：memory/tools/controller → governance → bundle
+pnpm -r run build      # 顺序由依赖图决定：memory/tools → scaffold → governance
 pnpm -r run typecheck
 pnpm verify            # build + smoke(27) + load-test(18)
 ```
 
-- `pnpm smoke`：27 项纯逻辑，不依赖 DSH 服务（Markdown 往返、召回、候选提交、预算、路由、路径围栏、指标、JSONL）。
+- `pnpm smoke`：25 项纯逻辑，不依赖 DSH 服务（Markdown 往返、召回、候选提交、预算、脚手架纪律、路径围栏、指标、JSONL）。
 - `pnpm load-test`：用**真实的** `@deepseek-ai/dsh-system-prompt` + `@deepseek-ai/dsh-tools` 加载四层，验证工具注册/guard 否决/pre-step 注入/`assemble()` 结果/卸载回收。
 
 两者都在临时目录里跑，不会碰工作区的 `.pseudo-agi/`。
@@ -27,7 +27,7 @@ pnpm verify            # build + smoke(27) + load-test(18)
 | --- | --- |
 | `@pseudo-agi/memory` | 记忆层 |
 | `@pseudo-agi/tools` | 手脚层 |
-| `@pseudo-agi/controller` | 控制层 |
+| `@pseudo-agi/scaffold` | 意识脚手架（注入纪律，不做路由） |
 | `@pseudo-agi/governance` | 治理层（对前两者只有编译期类型依赖） |
 | `@pseudo-agi/bundle` | 分发单元：`dsh.bundle.patch` + `cordis.patch.yml` |
 
@@ -53,10 +53,11 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
       name: '@pseudo-agi/tools'
       config:
         workspaceRoot: .
-    - id: pseudo-agi-controller
-      name: '@pseudo-agi/controller'
+    - id: pseudo-agi-scaffold
+      name: '@pseudo-agi/scaffold'
       config:
         enabled: true
+        injectPerTurn: 1
     - id: pseudo-agi-governance
       name: '@pseudo-agi/governance'
       config:
@@ -67,7 +68,7 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 
 ### 最小闭环（推荐先跑这个）
 
-只装前两层，控制器与治理层先不启用：
+只装前两层（记忆 + 手脚），脚手架与治理层先不启用：
 
 ```yaml
 - insert:
@@ -77,7 +78,7 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
       name: '@pseudo-agi/tools'
 ```
 
-这已经覆盖"检索 → 行动 → 沉淀"：模型能检索知识库、召回/写入记忆、在审批下写文件。跑通之后再逐步加 `pseudo-agi-controller`（复杂度最高）与 `pseudo-agi-governance`。
+这已经覆盖"检索 → 行动 → 沉淀"：模型能检索知识库、召回/写入记忆、在 guard 边界内写文件。跑通之后再逐步加 `pseudo-agi-scaffold`（纪律注入）与 `pseudo-agi-governance`（可观测）。
 
 ## 4. 配置速查
 
@@ -108,20 +109,18 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 | `maxSnippetChars` | `240` | 命中行截断长度 |
 | `maxWriteBytes` | `262144` | 单次写入上限 |
 | `maxDepth` | `6` | 检索递归深度 |
-| `writeRequiresApproval` | `true` | 写操作是否走 `ask` |
+| `writeRequiresApproval` | `true` | 写操作是否走 `ask`（本工程 profile 里设为 `false`，边界交给 guard） |
 | `deniedSegments` | `.git`、`node_modules`、`.ssh`、`.env` | 永不可读写的路径段 |
 | `deniedExtensions` | 可执行/脚本扩展名 | 永不可写入的扩展名 |
 
-### `@pseudo-agi/controller`
+### `@pseudo-agi/scaffold`
 
 | 字段 | 默认 | 含义 |
 | --- | --- | --- |
 | `enabled` | `true` | 总开关（`false` 时插件加载即空转） |
-| `injectPerTurn` | `2` | 每轮最多注入几条指令 |
-| `minPromptChars` | `8` | 短于则路由 `clarify` |
-| `requireEvidence` | `true` | 未取证的断言须标注"未经验证" |
-| `reflectOnEmptyRecall` | `false` | 检索为空时轮末 `steer` 一次（会重开轮次） |
-| `recallKeywords` / `writeKeywords` | 中英混合词表 | 路由触发词，可按领域替换 |
+| `injectPerTurn` | `1` | 每轮最多注入几条纪律消息 |
+| `requireEvidence` | `true` | 追加"未取证的断言须标注未经验证"一条 |
+| `discipline` | 三条内置纪律 | 注入正文，可按领域替换；它不参与任何路由判断 |
 
 ### `@pseudo-agi/governance`
 
@@ -144,7 +143,7 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 6. **证据门**：`memory_candidate` 不带 `evidence` → 参数校验失败；`evidence: [{kind:"file",ref:"不存在.md"}]` → 拒绝并列出缺失来源。
 7. **沉淀闭环**：先 `kb_read` 一个真实文件 → 用它的路径做证据 `memory_candidate` → `memory_commit` → 再 `memory_recall` 应命中；`.pseudo-agi/memory/<layer>/` 下出现 Markdown 文件。
 8. **每轮注入**：连续两轮对话，第二轮的系统提示里应出现 `当前长期记忆（每步刷新…）` 块（`.pseudo-agi/working.md` 同步更新）。
-9. **控制器注入**：说"查一下文档里审批是怎么做的" → 会话日志出现一条 `pseudo-agi-controller` 来源的消息，内容以 `[伪AGI·控制器] 路由=recall-first` 开头。
+9. **脚手架注入**：任一轮的首步 → 会话日志出现一条 `pseudo-agi-scaffold` 来源的消息，以 `[伪AGI·脚手架] 本轮纪律` 开头；同一轮的后续步不再出现。
 10. **治理数据**：`governance_report({})` 返回计数；`.pseudo-agi/governance/<sessionId>.jsonl` 每行一个 `{at, sessionId, kind, detail}`。
 11. **卸载即消失**：停用 `@pseudo-agi/memory` 后，四个 memory 工具与该 prompt 上下文同时消失；`kb_*` 与治理仍工作。停用 `@pseudo-agi/governance` 不影响其余三层。
 

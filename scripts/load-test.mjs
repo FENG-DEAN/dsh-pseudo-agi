@@ -76,7 +76,7 @@ app.tools.setExecutor({
 
 const memory = await import('../packages/pseudo-agi-memory/lib/index.js')
 const tools = await import('../packages/pseudo-agi-tools/lib/index.js')
-const controller = await import('../packages/pseudo-agi-controller/lib/index.js')
+const scaffold = await import('../packages/pseudo-agi-scaffold/lib/index.js')
 const governance = await import('../packages/pseudo-agi-governance/lib/index.js')
 
 const forks = []
@@ -86,7 +86,7 @@ const memoryConfig = resolveConfig(memory.Config, {
   maxInjectTokens: 200,
 })
 const toolsConfig = resolveConfig(tools.Config, { workspaceRoot: workspace, knowledgeRoots: ['docs'] })
-const controllerConfig = resolveConfig(controller.Config, { injectPerTurn: 2 })
+const scaffoldConfig = resolveConfig(scaffold.Config, { injectPerTurn: 1 })
 const governanceConfig = resolveConfig(governance.Config, { root: join(workspace, 'governance') })
 
 const toolNames = () => app.tools.definitions().map(definition => definition.name).sort()
@@ -119,8 +119,8 @@ try {
     assert.match(String(app.tools.checkGuards({ name: 'controlled_write', arguments: { path: '../x' } })?.reason), /路径越界/)
   })
 
-  await check('controller 与 governance 加载后共 8 个工具', async () => {
-    forks.push(app.plugin(controller, controllerConfig))
+  await check('scaffold 与 governance 加载后共 8 个工具', async () => {
+    forks.push(app.plugin(scaffold, scaffoldConfig))
     forks.push(app.plugin(governance, governanceConfig))
     await waitFor('governance tool', () => toolNames().length === 8)
     assert.ok(toolNames().includes('governance_report'))
@@ -224,7 +224,7 @@ try {
     source: { kind: 'user' },
   }]
 
-  await check('控制器把路由指令追加进本步消息', async () => {
+  await check('脚手架把纪律追加进本轮首步，且不做路由', async () => {
     const decision = await app.waterfall(
       {},
       'agent/pre-step',
@@ -233,8 +233,11 @@ try {
     )
     assert.equal(decision.kind, 'enter')
     assert.equal(decision.messages.length, 2)
-    assert.equal(decision.messages[1].source.kind, 'pseudo-agi-controller')
-    assert.match(decision.messages[1].content[0].text, /路由=recall-first/)
+    assert.equal(decision.messages[1].source.kind, 'pseudo-agi-scaffold')
+    const text = decision.messages[1].content[0].text
+    assert.match(text, /本轮纪律/)
+    assert.match(text, /不是用户提出的新需求/)
+    assert.ok(!text.includes('路由='), 'scaffold must never route')
   })
 
   await check('记忆注入块真的进入 system prompt 装配结果', async () => {
@@ -246,23 +249,21 @@ try {
     assert.ok(!context.text.includes('{{'), 'memory text must not be interpolated')
   })
 
-  await check('injectPerTurn 限制同轮注入次数', async () => {
+  await check('injectPerTurn=1：同一轮只在首步注入', async () => {
     const once = { kind: 'enter', messages }
-    for (const step of [1, 2]) {
-      const decision = await app.waterfall({}, 'agent/pre-step',
-        { agent, messages: once.messages, turn: 2, step, signal, modelSelection: { provider: 'p', model: 'm' } },
-        async () => once)
-      assert.equal(decision.messages.length, step <= 2 ? 2 : 1)
-    }
-    const third = await app.waterfall({}, 'agent/pre-step',
-      { agent, messages: once.messages, turn: 2, step: 3, signal, modelSelection: { provider: 'p', model: 'm' } },
+    const first = await app.waterfall({}, 'agent/pre-step',
+      { agent, messages: once.messages, turn: 2, step: 1, signal, modelSelection: { provider: 'p', model: 'm' } },
       async () => once)
-    assert.equal(third.messages.length, 1, 'third step in the same turn must not inject')
+    assert.equal(first.messages.length, 2)
+    const second = await app.waterfall({}, 'agent/pre-step',
+      { agent, messages: once.messages, turn: 2, step: 2, signal, modelSelection: { provider: 'p', model: 'm' } },
+      async () => once)
+    assert.equal(second.messages.length, 1, 'second step in the same turn must not inject again')
   })
 
   console.log('\n[6] 卸载回收（真实 fiber 所有权）')
 
-  await check('卸载 memory 后：工具、prompt context 同时消失，控制器仍工作', async () => {
+  await check('卸载 memory 后：工具、prompt context 同时消失，脚手架仍工作', async () => {
     const memoryFork = forks[0]
     await memoryFork.dispose()
     await waitFor('memory tools gone', () => !toolNames().some(name => name.startsWith('memory_')))
@@ -271,22 +272,21 @@ try {
     const decision = await app.waterfall({}, 'agent/pre-step',
       { agent, messages, turn: 3, step: 1, signal, modelSelection: { provider: 'p', model: 'm' } },
       async () => ({ kind: 'enter', messages }))
-    assert.equal(decision.messages.length, 2, 'controller is a separate layer and keeps injecting')
-    assert.match(decision.messages[1].content[0].text, /路由=recall-first/, 'kb_search still exists, so recall-first still applies')
+    assert.equal(decision.messages.length, 2, 'scaffold is a separate layer and keeps injecting')
+    assert.match(decision.messages[1].content[0].text, /本轮纪律/)
   })
 
-  await check('卸载 tools 后 guard 撤销，且控制器降级为 direct', async () => {
+  await check('卸载 tools 后 guard 撤销，脚手架与工具解耦', async () => {
     await forks[1].dispose()
     await waitFor('hand tools gone', () => !toolNames().includes('controlled_write'))
     assert.equal(app.tools.checkGuards({ name: 'controlled_write', arguments: { path: '../x' } }), undefined)
     const decision = await app.waterfall({}, 'agent/pre-step',
       { agent, messages, turn: 4, step: 1, signal, modelSelection: { provider: 'p', model: 'm' } },
       async () => ({ kind: 'enter', messages }))
-    assert.match(decision.messages[1].content[0].text, /路由=direct/)
-    assert.match(decision.messages[1].content[0].text, /没有检索工具/)
+    assert.equal(decision.messages.length, 2, 'scaffold has no tool dependency')
   })
 
-  await check('卸载 controller/governance 后只剩空注册表', async () => {
+  await check('卸载 scaffold/governance 后只剩空注册表', async () => {
     for (const fork of forks.slice(2)) await fork.dispose()
     await waitFor('all tools gone', () => toolNames().length === 0)
     const decision = await app.waterfall({}, 'agent/pre-step',

@@ -1,9 +1,9 @@
 /**
  * In-memory metric book plus an append-only JSONL journal.
  *
- * Metrics answer "is it getting better or just repeating itself": completion
- * rate, tool failure rate, memory hit rate, and how often the controller had to
- * intervene. The journal is the replayable record behind those numbers.
+ * Metrics answer "is it getting better or just repeating itself": tool failure
+ * rate, memory hit rate, and how often the scaffold had to remind the model of
+ * its own discipline. The journal is the replayable record behind those numbers.
  *
  * @module @pseudo-agi/governance/metrics
  */
@@ -22,11 +22,11 @@ export interface SessionMetrics {
   toolFailures: number
   memoryRecalls: number
   memoryHits: number
-  controllerDecisions: number
-  controllerInjections: number
+  /** Steps observed by the scaffold (one event per turn's first step). */
+  scaffoldSteps: number
+  /** Steps where the scaffold actually injected a discipline. */
+  scaffoldInjections: number
   errors: number
-  /** Route name → count. */
-  routes: Record<string, number>
 }
 
 /** One journal line. */
@@ -74,10 +74,9 @@ export class MetricsBook {
       toolFailures: 0,
       memoryRecalls: 0,
       memoryHits: 0,
-      controllerDecisions: 0,
-      controllerInjections: 0,
+      scaffoldSteps: 0,
+      scaffoldInjections: 0,
       errors: 0,
-      routes: {},
     }
     this.sessions.set(sessionId, created)
     if (this.sessions.size > this.capacity) {
@@ -96,7 +95,7 @@ export class MetricsBook {
     return [...this.sessions.values()]
       .sort((left, right) => right.lastAt.localeCompare(left.lastAt))
       .slice(0, limit)
-      .map(metrics => ({ ...metrics, routes: { ...metrics.routes } }))
+      .map(metrics => ({ ...metrics }))
   }
 }
 

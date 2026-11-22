@@ -72,16 +72,10 @@ export function registerGovernanceTools(ctx: Context, deps: GovernanceToolDeps):
                 memoryRecalls: { type: 'integer', required: true },
                 memoryHits: { type: 'integer', required: true },
                 memoryHitRate: { type: 'number', required: true },
-                controllerDecisions: { type: 'integer', required: true },
-                controllerInjections: { type: 'integer', required: true },
+                scaffoldSteps: { type: 'integer', required: true },
+                scaffoldInjections: { type: 'integer', required: true },
                 errors: { type: 'integer', required: true },
                 lastAt: { type: 'string', required: true },
-                routes: {
-                  type: 'object',
-                  required: true,
-                  additionalProperties: true,
-                  description: 'Route name → number of decisions.',
-                },
               },
             },
           },
@@ -106,7 +100,7 @@ export function registerGovernanceTools(ctx: Context, deps: GovernanceToolDeps):
         const lines = value.sessions.map(session =>
           `- ${session.sessionId.slice(0, 8)}… 轮次 ${session.turns} / 步 ${session.steps}；`
           + `工具失败率 ${session.toolFailureRate}；记忆命中率 ${session.memoryHitRate}；`
-          + `控制器注入 ${session.controllerInjections}/${session.controllerDecisions}`)
+          + `脚手架注入 ${session.scaffoldInjections}/${session.scaffoldSteps}`)
         return [{
           type: 'text',
           text: lines.length === 0
@@ -134,11 +128,10 @@ export function registerGovernanceTools(ctx: Context, deps: GovernanceToolDeps):
           memoryRecalls: session.memoryRecalls,
           memoryHits: session.memoryHits,
           memoryHitRate: rate(session.memoryHits, session.memoryRecalls),
-          controllerDecisions: session.controllerDecisions,
-          controllerInjections: session.controllerInjections,
+          scaffoldSteps: session.scaffoldSteps,
+          scaffoldInjections: session.scaffoldInjections,
           errors: session.errors,
           lastAt: session.lastAt,
-          routes: asJsonObject(session.routes),
         })),
         recent: recent.map(record => ({
           at: record.at,
