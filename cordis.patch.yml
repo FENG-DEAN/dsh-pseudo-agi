@@ -1,4 +1,4 @@
-﻿# Layer order matters:
+# Layer order matters:
 #   memory     → storage, recall tools, per-step injection block
 #   tools      → controlled hands (guard + approval + policy check, + kb_store)
 #   scaffold   → injects one discipline line per turn; never routes, never picks tools
@@ -78,6 +78,10 @@
         maxRecentLines: 40
 
     - id: pseudo-agi-panel
-      name: '@pseudo-agi/bundle/layers/panel'
+      # 精确包名（两段），不是 `layers/panel`：客户端模块系统按 Loader 行的
+      # specifier 识别包（`exactPackageSpecifier` 只认 `@scope/name`），三段子路径
+      # 会被判为「不是包」而整行跳过，于是面板 host 在、左栏入口不在。
+      # 包根的 `index.js` 因此就是 panel host。其余四行用子路径，客户端会忽略它们。
+      name: '@pseudo-agi/bundle'
       config:
         storeRoot: .pseudo-agi

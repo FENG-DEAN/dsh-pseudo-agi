@@ -30,7 +30,7 @@
 | --- | --- |
 | GitHub | `pnpm add github:FENG-DEAN/dsh-pseudo-agi` |
 | npm（发布后） | `pnpm add @pseudo-agi/bundle` |
-| tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.3.0.tgz` |
+| tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.3.1.tgz` |
 
 DSH 插件页的安装输入框接受同样的 spec（包名 / 绝对路径 / tarball URL / Git 地址）。仓库里已带构建产物（`vendor/` 与 `client.js`），**不会在你机器上重新构建**。
 
@@ -137,8 +137,8 @@ pnpm release-check  # 发布前检查实际会发出去的内容
 | 知识库位置：指针优先级、迁移、回滚、四层一致 | `pnpm store-test` | 23/23 |
 | 真实服务加载 + 注入 + 卸载 + `kb_store` 端到端 | `pnpm load-test` | 26/26 |
 | 面板路由 / 数据契约 / 鉴权 / 跟随指针 | `pnpm panel-test` | 16/16 |
-| 分发：自包含产物（vendor 随包）、单 spec 安装、五行解析、**http URL 在线安装** | `pnpm bundle-test` | 12/12 |
-| 发布闸门：版本/元数据/LICENSE、stale 产物、vendor 逐文件比对、tarball 清单、无宿主包 | `pnpm release-check` | 35/35 |
+| 分发：自包含产物（vendor 随包）、单 spec 安装、五行解析（panel 用包根）、**http URL 在线安装** | `pnpm bundle-test` | 13/13 |
+| 发布闸门：版本/元数据/LICENSE、stale 产物、vendor 逐文件比对、tarball 清单、无宿主包 | `pnpm release-check` | 36/36 |
 | 真机：五层加载、面板入口、`read-only` 拒绝写入 | 手动（见 `AGI_STATE.md` 验证记录） | 通过（换位置与自包含安装待重启后真机确认） |
 | 真实 LLM 往返、审批 UI 交互 | — | ⛔ 有意未验证（`writeRequiresApproval: false`，该路径不触发） |
 

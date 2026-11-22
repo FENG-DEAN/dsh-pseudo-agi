@@ -306,10 +306,22 @@ try {
 
   console.log('\n[4] 组合包接线')
 
-  await check('patch 五行都指向包内子路径', async () => {
+  await check('patch 四行用子路径，panel 行用精确包名（客户端按两段包名识别）', async () => {
     const patch = await readFile(join(projectRoot, 'cordis.patch.yml'), 'utf8')
     const names = [...patch.matchAll(/^\s*name: '([^']+)'/gm)].map(match => match[1])
-    assert.deepEqual(names, LAYER_ENTRIES.map(layer => `@pseudo-agi/bundle/layers/${layer}`))
+    assert.deepEqual(names, [
+      '@pseudo-agi/bundle/layers/memory',
+      '@pseudo-agi/bundle/layers/tools',
+      '@pseudo-agi/bundle/layers/scaffold',
+      '@pseudo-agi/bundle/layers/governance',
+      // 只有两段包名能通过客户端的 exactPackageSpecifier；三段子路径会被整行跳过。
+      '@pseudo-agi/bundle',
+    ])
+  })
+
+  await check('包根 index.js 是 panel host（挂载 panel 行的就是它）', async () => {
+    const text = await readFile(join(projectRoot, 'index.js'), 'utf8')
+    assert.match(text, /export \* from '\.\/vendor\/node_modules\/@pseudo-agi\/panel\/index\.js'/)
   })
 
   await check('每个 layer 入口用相对路径指向 vendor，没有裸包名', async () => {

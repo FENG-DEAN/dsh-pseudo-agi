@@ -46,21 +46,21 @@ pnpm verify            # build + smoke + store-test + load-test + panel-test + b
 
 ```bash
 pnpm pack-bundle
-# → dist/pseudo-agi-bundle-0.3.0.tgz + .manifest.json（sha256、包版本、文件数）；挂 Release 用
+# → dist/pseudo-agi-bundle-0.3.1.tgz + .manifest.json（sha256、包版本、文件数）；挂 Release 用
 ```
 
 四种安装入口：
 
 | 入口 | spec |
 | --- | --- |
-| 本地文件 | `pnpm add ./dist/pseudo-agi-bundle-0.3.0.tgz` |
-| 在线 tarball | `pnpm add https://example.com/pseudo-agi-bundle-0.3.0.tgz`（GitHub Release、静态站点、对象存储都可以） |
+| 本地文件 | `pnpm add ./dist/pseudo-agi-bundle-0.3.1.tgz` |
+| 在线 tarball | `pnpm add https://example.com/pseudo-agi-bundle-0.3.1.tgz`（GitHub Release、静态站点、对象存储都可以） |
 | GitHub 仓库 | `pnpm add "github:<owner>/<repo>#<commit>"`（仓库已带 `vendor/` 与 `client.js`，安装时不构建） |
 | 插件页 | 把上面任一 spec 贴进插件管理器的安装输入框（`parseInstallSpec` 认绝对路径、tarball URL、Git 地址、registry 包名） |
 
 为什么必须自包含：插件管理器一次只接受一条 spec，而 `@pseudo-agi/*` 不在任何 registry 上——只声明依赖的 bundle 装上去会以 `ERR_PNPM_FETCH_404` 失败（`@pseudo-agi/store` 是第一个 404 的）。**不能**用 `bundledDependencies` 解决：实测 `pnpm pack` 会顺着 workspace 软链接把宿主包（`@deepseek-ai/*`）一起打进 tarball。所以改为把编译产物复制进包内 `vendor/` 并提交，`layers/*.js` 用相对路径指向它——这样从 Git 安装（没有安装步骤）同样成立。
 
-装好之后 profile 里只有 `@pseudo-agi/bundle` 一个包，patch 的五行各自解析到 `@pseudo-agi/bundle/layers/<layer>`，再由相对路径解析到包内 vendor 副本（理由见 [layers/README.md](../layers/README.md)）。
+装好之后 profile 里只有 `@pseudo-agi/bundle` 一个包：patch 前四行解析到 `@pseudo-agi/bundle/layers/<layer>`，panel 行解析到**包根** `@pseudo-agi/bundle`——客户端模块系统只承认两段包名，三段子路径会被整行跳过（面板 host 在、左栏入口不在）。包根 `index.js` 因此就是 panel host，转发到 `vendor/…/panel/index.js`。
 
 验收：
 
@@ -68,7 +68,7 @@ pnpm pack-bundle
 pnpm bundle-test
 ```
 
-它打包、单 spec 安装、逐条解析五行、加载面板客户端，并用本地 http 服务器真装一次 URL——共 12 项。
+它打包、单 spec 安装、逐条解析五行、加载面板客户端，并用本地 http 服务器真装一次 URL——共 13 项。
 
 ### 2.2 开发形态（`link:`）
 
@@ -103,12 +103,12 @@ pnpm bundle-test
 // （用 bundle 的话走 §2.1，一条 spec 就够，不需要 overrides。）
 {
   "dependencies": {
-    "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.3.0.tgz",
-    "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.3.0.tgz",
-    "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.3.0.tgz",
-    "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.3.0.tgz",
-    "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.3.0.tgz",
-    "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.3.0.tgz"
+    "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.3.1.tgz",
+    "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.3.1.tgz",
+    "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.3.1.tgz",
+    "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.3.1.tgz",
+    "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.3.1.tgz",
+    "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.3.1.tgz"
   }
 }
 ```
@@ -117,12 +117,12 @@ pnpm bundle-test
 # profile/pnpm-workspace.yaml —— overrides 在 pnpm 11 已迁到这里；
 # package.json 里的 "pnpm.overrides" 会被忽略（只有一条警告）。
 overrides:
-  "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.3.0.tgz"
-  "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.3.0.tgz"
-  "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.3.0.tgz"
-  "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.3.0.tgz"
-  "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.3.0.tgz"
-  "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.3.0.tgz"
+  "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.3.1.tgz"
+  "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.3.1.tgz"
+  "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.3.1.tgz"
+  "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.3.1.tgz"
+  "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.3.1.tgz"
+  "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.3.1.tgz"
 ```
 
 `@pseudo-agi/store` 必须同时出现在两处：它是三个插件包的**运行时**依赖（不是 peer），缺了它 `memory`/`tools` 一加载就 `ERR_MODULE_NOT_FOUND`；而它们的 `^0.3.0` 只有 override 才能落回本地 tarball。bundle 不需要这一套——它自带 `vendor/`，装它一条 spec 即可（§2.1）。
@@ -151,7 +151,7 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 
 1. `@pseudo-agi/bundle` 的 `package.json` 声明 `dsh.bundle.patch: "./cordis.patch.yml"` 与 `dsh.client`（面板浏览器半侧）；
 2. `cordis.patch.yml` 用 `- insert: [...]` 追加五行插件（memory / tools / scaffold / governance / panel）；
-3. 每行的 `name` 是 `@pseudo-agi/bundle/layers/<layer>` —— **不是**裸包名。patch 的 `name` 由 loader 用 `import.meta.resolve` 从 profile 的 package scope 解析，自包含安装后 profile 里只有 bundle，所以要走包内子路径；`id` 是本 patch 内的唯一 id，`config` 整体传给插件的 `Config`。
+3. 前四行的 `name` 是 `@pseudo-agi/bundle/layers/<layer>`；**panel 行是裸包名** `@pseudo-agi/bundle`。原因：客户端模块系统用 `exactPackageSpecifier` 判定浏览器模块，只接受 `@scope/name` 两段，三段子路径返回 undefined、整行被跳过；包根 `index.js` 就是 panel host（转发 `vendor/…/panel/index.js`），所以 panel 行既提供 host 路由，又提供 client 半侧的挂载点。`id` 是本 patch 内的唯一 id，`config` 整体传给插件的 `Config`。
 
 如果直接写进 profile 而不用 bundle（六个包都作为 profile 直接依赖或 `link:`），等价写法是裸包名：
 

@@ -13,8 +13,8 @@ pnpm add github:FENG-DEAN/dsh-pseudo-agi          # 粘仓库地址即可，不�
 ```
 （仓库根也是包根）
 ├── package.json          # 没有 dependencies —— 安装时不需要解析任何包名
-├── cordis.patch.yml      # 五行，name 全部指向包内子路径
-├── layers/{memory,tools,scaffold,governance,panel}.js   # 相对路径指向 vendor
+├── cordis.patch.yml      # 四行用 layers/* 子路径，panel 行用精确包名（客户端只认两段）
+├── layers/{memory,tools,scaffold,governance}.js        # 相对路径指向 vendor（panel 走包根 index.js）
 ├── client.js             # 面板浏览器半侧（factory id = @pseudo-agi/bundle）
 ├── locale/
 ├── vendor/node_modules/@pseudo-agi/{store,memory,tools,scaffold,governance,panel}/
@@ -35,7 +35,7 @@ pnpm add github:FENG-DEAN/dsh-pseudo-agi
 pnpm add @pseudo-agi/bundle
 
 # Release / 静态 URL 上的 tarball
-pnpm add https://github.com/FENG-DEAN/dsh-pseudo-agi/releases/download/v0.3.0/pseudo-agi-bundle-0.3.0.tgz
+pnpm add https://github.com/FENG-DEAN/dsh-pseudo-agi/releases/download/v0.3.1/pseudo-agi-bundle-0.3.1.tgz
 ```
 
 DSH 插件页的安装输入框接受同样的 spec（包名、绝对路径、tarball URL、Git 地址）。

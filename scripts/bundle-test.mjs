@@ -143,10 +143,23 @@ try {
         `${layer}: resolved outside the bundle (${resolved})`)
     }
   })
-  await check('patch 只引用包内子路径，没有裸的 @pseudo-agi/<layer>', async () => {
+  await check('包根可从 profile 解析，且就是 panel host（客户端按两段包名识别它）', async () => {
+    const entry = consumerRequire.resolve('@pseudo-agi/bundle')
+    const text = await readFile(entry, 'utf8')
+    assert.match(text, /from '\.\/vendor\/node_modules\/@pseudo-agi\/panel\/index\.js'/)
+    const panel = await readFile(resolve(dirname(entry), './vendor/node_modules/@pseudo-agi/panel/index.js'), 'utf8')
+    assert.match(panel, /export const name = 'pseudo-agi-panel'|name = 'pseudo-agi-panel'/)
+  })
+  await check('patch 四行子路径 + panel 行精确包名（三段会被客户端整行跳过）', async () => {
     const patch = await readFile(join(localConsumer, 'node_modules', '@pseudo-agi', 'bundle', 'cordis.patch.yml'), 'utf8')
     const names = [...patch.matchAll(/^\s*name: '([^']+)'/gm)].map(match => match[1])
-    assert.deepEqual(names, LAYERS.map(layer => `@pseudo-agi/bundle/layers/${layer}`))
+    assert.deepEqual(names, [
+      '@pseudo-agi/bundle/layers/memory',
+      '@pseudo-agi/bundle/layers/tools',
+      '@pseudo-agi/bundle/layers/scaffold',
+      '@pseudo-agi/bundle/layers/governance',
+      '@pseudo-agi/bundle',
+    ])
   })
   await check('vendor 内部仍按普通 node_modules 链解析（store 被四层共用）', () => {
     for (const owner of ['memory', 'tools', 'governance', 'panel']) {
@@ -223,9 +236,11 @@ try {
       await stat(join(installed, 'vendor', 'node_modules', '@pseudo-agi', name, entry))
     }
   })
-  await check('在线装好后，五行同样能在该 profile 里解析', async () => {
+  await check('在线装好后，包根与四层子路径都能在该 profile 里解析', async () => {
     const requireFromOnline = createRequire(join(onlineConsumer, 'package.json'))
-    for (const layer of LAYERS) {
+    const root = requireFromOnline.resolve('@pseudo-agi/bundle')
+    assert.match(await readFile(root, 'utf8'), /vendor\/node_modules\/@pseudo-agi\/panel\/index\.js/)
+    for (const layer of ['memory', 'tools', 'scaffold', 'governance']) {
       const entry = requireFromOnline.resolve(`@pseudo-agi/bundle/layers/${layer}`)
       const text = await readFile(entry, 'utf8')
       const target = /export \* from '(\.\.\/vendor\/[^']+)'/.exec(text)?.[1]

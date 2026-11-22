@@ -1,6 +1,6 @@
 {
   "name": "@pseudo-agi/scaffold",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Consciousness scaffold for the pseudo-AGI: injects one per-turn discipline message and publishes step events. It never routes, never chooses tools.",
   "type": "module",
   "main": "lib/index.js",
