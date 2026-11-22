@@ -1,0 +1,29 @@
+{
+  "name": "@pseudo-agi/bundle",
+  "version": "0.1.0",
+  "description": "Bundle of the four pseudo-AGI layers for the DeepSeek Harness: memory, controlled tools, routing controller, governance",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@pseudo-agi/controller": "workspace:^0.1.0",
+    "@pseudo-agi/governance": "workspace:^0.1.0",
+    "@pseudo-agi/memory": "workspace:^0.1.0",
+    "@pseudo-agi/tools": "workspace:^0.1.0"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "pseudo-agi-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A layered pseudo-AGI built strictly on DeepSeek Harness plugin contracts",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "smoke": "node scripts/smoke.mjs",
+    "load-test": "node scripts/load-test.mjs",
+    "verify": "pnpm -r run build && pnpm smoke && pnpm load-test"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "js-yaml": "^5.5.0",
+    "typescript": "^5.7.2"
+  }
+}

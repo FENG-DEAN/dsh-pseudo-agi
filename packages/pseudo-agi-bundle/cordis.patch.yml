@@ -1,0 +1,50 @@
+# Layer order matters:
+#   memory   → provides storage, recall tools, and the per-step injection
+#   tools    → provides the controlled hands (guard + approval)
+#   controller → reads the tool surface, injects one directive per step
+#   governance → observes everything, injects nothing
+#
+# Each row is an independent patch line: disable one layer by deleting its row
+# (or setting `disabled: true`) without touching the others. `config` is applied
+# as a whole — the loader does not deep-merge with a later profile layer, so a
+# profile that re-declares a row must restate every field it wants.
+
+- insert:
+    - id: pseudo-agi-memory
+      name: '@pseudo-agi/memory'
+      config:
+        root: .pseudo-agi/memory
+        maxInjectTokens: 900
+        minCoverage: 0.34
+        minConfidenceToInject: 0.5
+        verifyFileEvidence: true
+        writeWorkingDigest: true
+
+    - id: pseudo-agi-tools
+      name: '@pseudo-agi/tools'
+      config:
+        workspaceRoot: .
+        knowledgeRoots:
+          - docs
+          - .pseudo-agi/memory
+        writeRoots:
+          - .
+        writeRequiresApproval: true
+        maxWriteBytes: 262144
+
+    - id: pseudo-agi-controller
+      name: '@pseudo-agi/controller'
+      config:
+        enabled: true
+        injectPerTurn: 2
+        minPromptChars: 8
+        requireEvidence: true
+        reflectOnEmptyRecall: false
+
+    - id: pseudo-agi-governance
+      name: '@pseudo-agi/governance'
+      config:
+        root: .pseudo-agi/governance
+        journal: true
+        maxSessions: 256
+        maxRecentLines: 50

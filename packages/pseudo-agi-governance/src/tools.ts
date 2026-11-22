@@ -1,0 +1,153 @@
+/**
+ * Model-facing governance report.
+ *
+ * Read-only by construction: it reads the in-memory book and the journal tail.
+ * It exists so the agent can ask "how am I doing" without a human exporting
+ * files, and so an evaluation loop has a stable, bounded query surface.
+ *
+ * @module @pseudo-agi/governance/tools
+ */
+
+import type { Context } from '@deepseek-ai/cordis'
+import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import type { GovernanceConfig } from './config.js'
+import type { JsonlJournal, MetricsBook } from './metrics.js'
+
+/** Collaborators a governance tool needs. */
+export interface GovernanceToolDeps {
+  readonly book: MetricsBook
+  readonly journal: JsonlJournal
+  readonly config: GovernanceConfig
+}
+
+/** Round a ratio to three decimals so the output is stable to compare. */
+function rate(numerator: number, denominator: number): number {
+  return denominator === 0 ? 0 : Math.round((numerator / denominator) * 1000) / 1000
+}
+
+/** Round-trip arbitrary data into a lossless JSON object value. */
+function asJsonObject(value: unknown): Record<string, JsonValue> {
+  const parsed: unknown = JSON.parse(JSON.stringify(value))
+  if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+    return parsed as Record<string, JsonValue>
+  }
+  return {}
+}
+
+/**
+ * Register `governance_report`.
+ * @param ctx - plugin context.
+ * @param deps - metric book, journal, and config.
+ */
+export function registerGovernanceTools(ctx: Context, deps: GovernanceToolDeps): void {
+  ctx.tools.register(defineTool({
+    name: 'governance_report',
+    description:
+      'Read the pseudo-AGI evaluation metrics: turn/step counts, tool failure rate, memory hit rate, '
+      + 'controller interventions, and the recent decision/action/outcome journal for one session. '
+      + 'Read-only; never changes state.',
+    parameters: {
+      sessionId: { type: 'string', description: 'Limit the journal tail to this session id.' },
+      limit: { type: 'integer', description: 'Maximum sessions in the summary (default 10).' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          sessions: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                sessionId: { type: 'string', required: true },
+                turns: { type: 'integer', required: true },
+                steps: { type: 'integer', required: true },
+                toolCalls: { type: 'integer', required: true },
+                toolFailures: { type: 'integer', required: true },
+                toolFailureRate: { type: 'number', required: true },
+                memoryRecalls: { type: 'integer', required: true },
+                memoryHits: { type: 'integer', required: true },
+                memoryHitRate: { type: 'number', required: true },
+                controllerDecisions: { type: 'integer', required: true },
+                controllerInjections: { type: 'integer', required: true },
+                errors: { type: 'integer', required: true },
+                lastAt: { type: 'string', required: true },
+                routes: {
+                  type: 'object',
+                  required: true,
+                  additionalProperties: true,
+                  description: 'Route name → number of decisions.',
+                },
+              },
+            },
+          },
+          recent: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                at: { type: 'string', required: true },
+                sessionId: { type: 'string', required: true },
+                kind: { type: 'string', required: true },
+                detail: { type: 'object', required: true, additionalProperties: true },
+              },
+            },
+          },
+          note: { type: 'string' },
+        },
+      },
+      render: (_args, value) => {
+        const lines = value.sessions.map(session =>
+          `- ${session.sessionId.slice(0, 8)}… 轮次 ${session.turns} / 步 ${session.steps}；`
+          + `工具失败率 ${session.toolFailureRate}；记忆命中率 ${session.memoryHitRate}；`
+          + `控制器注入 ${session.controllerInjections}/${session.controllerDecisions}`)
+        return [{
+          type: 'text',
+          text: lines.length === 0
+            ? '暂无治理数据：本进程还没有观察到任何 agent 活动。'
+            : `治理指标（最近 ${lines.length} 个会话）：\n${lines.join('\n')}`
+              + (value.note === undefined ? '' : `\n${value.note}`),
+        }]
+      },
+    },
+    async execute(args, exec) {
+      exec.signal.throwIfAborted()
+      const sessions = deps.book.snapshot(args.limit ?? 10)
+      const sessionId = args.sessionId ?? sessions[0]?.sessionId
+      const recent = sessionId === undefined
+        ? []
+        : await deps.journal.tail(sessionId, deps.config.maxRecentLines)
+      return {
+        sessions: sessions.map(session => ({
+          sessionId: session.sessionId,
+          turns: session.turns,
+          steps: session.steps,
+          toolCalls: session.toolCalls,
+          toolFailures: session.toolFailures,
+          toolFailureRate: rate(session.toolFailures, session.toolCalls),
+          memoryRecalls: session.memoryRecalls,
+          memoryHits: session.memoryHits,
+          memoryHitRate: rate(session.memoryHits, session.memoryRecalls),
+          controllerDecisions: session.controllerDecisions,
+          controllerInjections: session.controllerInjections,
+          errors: session.errors,
+          lastAt: session.lastAt,
+          routes: asJsonObject(session.routes),
+        })),
+        recent: recent.map(record => ({
+          at: record.at,
+          sessionId: record.sessionId,
+          kind: record.kind,
+          detail: asJsonObject(record.detail),
+        })),
+        ...(deps.config.journal ? {} : { note: 'journal 已关闭：仅返回内存中的聚合指标。' }),
+      }
+    },
+  }))
+}
