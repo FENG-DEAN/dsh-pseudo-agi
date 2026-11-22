@@ -1,6 +1,6 @@
 # 伪AGI · DSH 插件工程
 
-三个**相互独立、可单独卸载**的 DSH 插件，加一个只读治理层，通过 Cordis 生命周期、事件、上下文注入串成闭环。
+五个**相互独立、可单独卸载**的 DSH 插件，通过 Cordis 生命周期、事件、上下文注入串成闭环。
 
 **角色分配是这套东西的前提：意识就是模型（不是插件）；插件只提供意识自己做不到的事——改自己的上下文、跨步持久化、强制边界、留下轨迹。**
 
@@ -28,6 +28,7 @@
 | [packages/pseudo-agi-tools](packages/pseudo-agi-tools) | 受控手脚：`kb_search`、`kb_read`、`controlled_write` + `ctx.tools.guard()` |
 | [packages/pseudo-agi-scaffold](packages/pseudo-agi-scaffold) | 意识脚手架：每轮首步注入纪律 + 发 `scaffold-step` 事件；**不做路由、不选工具** |
 | [packages/pseudo-agi-governance](packages/pseudo-agi-governance) | 治理层：只读观察器 + 指标 + JSONL 审计 + `governance_report` |
+| [packages/pseudo-agi-panel](packages/pseudo-agi-panel) | 左侧栏只读面板：Host 一条同源路由 + 客户端两个 slot；自验 `dsh-auth` 签名 cookie |
 | [packages/pseudo-agi-bundle](packages/pseudo-agi-bundle) | 分发单元：`package.json` 的 `dsh.bundle.patch` + `cordis.patch.yml` |
 | [docs/architecture.md](docs/architecture.md) | 事件流、注册/释放清单、与 DSH 契约的对应关系 |
 | [docs/spec-compliance.md](docs/spec-compliance.md) | 三条硬约束逐条对照；方案里几处 API 名称的纠正 |
@@ -60,7 +61,7 @@ pnpm build          # 每个包各自 tsc 到 lib/
 pnpm typecheck
 ```
 
-装载与验收见 [docs/install.md](docs/install.md)。只想要最小闭环时，启用 `pseudo-agi-memory` + `pseudo-agi-tools` 两层即可（控制器与治理层可选）。
+装载与验收见 [docs/install.md](docs/install.md)。只想要最小闭环时，启用 `pseudo-agi-memory` + `pseudo-agi-tools` 两层即可（脚手架、治理层与面板均可选）。
 
 ## 这个方案能做到 / 明确做不到
 
@@ -74,9 +75,12 @@ pnpm typecheck
 
 | 检查 | 命令 | 结果 |
 | --- | --- | --- |
-| 四包编译 | `pnpm -r run build` | 通过 |
-| 纯逻辑/存储/围栏/指标 | `pnpm smoke` | 27/27 |
+| 五包编译 | `pnpm -r run build` | 通过 |
+| 纯逻辑/存储/围栏/策略/指标 | `pnpm smoke` | 38/38 |
 | 真实服务加载 + 注入 + 卸载 | `pnpm load-test` | 18/18 |
+| 面板路由 / 数据契约 / 签名 cookie 鉴权 | `pnpm panel-test` | 14/14 |
+| 真机：五层加载、面板入口、`read-only` 拒绝写入 | 手动（见 `AGI_STATE.md` 验证记录） | 通过 |
+| 真实 LLM 往返、审批 UI 交互 | — | ⛔ 有意未验证（`writeRequiresApproval: false`，该路径不触发） |
 
 `load-test` 加载的是**真实的** `@deepseek-ai/dsh-system-prompt` 与 `@deepseek-ai/dsh-tools`，因此这三点是按真机语义验证的，不是替身：
 

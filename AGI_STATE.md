@@ -42,7 +42,7 @@
 ## 阻塞 / 待决
 
 - 无阻塞。
-- 待决 1：`bundle` 分发路径未验证（`workspace:^` 依赖在 profile 里解析不了，所以现在装的是四个独立包）。
+- 待决 1（**已解决**）：bundle 分发已端到端验证——六个包 `pnpm pack`、`pnpm.overrides` 把 `@pseudo-agi/*` 回指本地 tarball、`.npmrc` 关掉 peer 自动安装，`pnpm install --ignore-scripts` 退出码 0，patch 引用的五个插件全部可解析。细节见验证记录「bundle 分发修复并端到端验证」与 `docs/install.md` §2。
 - 待决 2（**已解决，真机双向验证通过**）：沙箱机制本来就在——`dsh-sandbox` / `dsh-sandbox-policy` 由 `dsh-web-app` bundle 加载，会话策略当前是 `danger-full-access`（系统提示原话："The DSH file sandbox does not restrict file modifications"）。真正的缺口不是"没接沙箱"，而是 **`controlled_write` 绕过了统一策略**：DSH 的 `write`/`edit`（走 `ctx.fs`）与 `pwsh`（走 `ctx.shell`）都受策略约束，只有我们自己实现的写工具不受。修法见验证记录。
 
 ## 运行环境

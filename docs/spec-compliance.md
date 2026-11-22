@@ -56,7 +56,7 @@
 | `agent/pre-step` 注入 → `assemble()` 结果含注入块 | ✅ 通过 |
 | 卸载后工具/guard/prompt context 全部回收 | ✅ 通过 |
 | 装进 profile 后 GUI 内实际可用（侧栏「鲸鱼娘 AGI」入口 + 面板数据） | ✅ 真机验证 |
-| 真实 LLM 往返、审批 UI 交互、`approval policy = never` 下的拒绝 | ⛔ 未逐项验证（需完整交互会话） |
+| 真实 LLM 往返、审批 UI 交互、`approval policy = never` 下的拒绝 | ⛔ **有意未验证**：部署里 `writeRequiresApproval: false`，审批门这条代码路径不会触发。要验需临时改配置 + 重启 + 试写一次；为一条被主动关闭的能力单独跑一轮，收益低于成本。保留为**已知空白**，不假装验过 |
 
 ## 5. 安全与性能上的已知限制
 
