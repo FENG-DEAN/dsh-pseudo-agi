@@ -1,4 +1,4 @@
-﻿# 伪AGI · DSH 插件工程
+# 伪AGI · DSH 插件工程
 
 > 仓库：https://github.com/FENG-DEAN/dsh-pseudo-agi
 
@@ -33,6 +33,10 @@
 | tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.1.0.tgz` |
 
 DSH 插件页的安装输入框接受同样的 spec（包名 / 绝对路径 / tarball URL / Git 地址）。
+
+> **插件页里贴 GitHub 地址时，要贴带 `&path:` 的整串**：
+> `github:FENG-DEAN/dsh-pseudo-agi#v0.1.0&path:packages/pseudo-agi-bundle`
+> 仓库根是 `pseudo-agi-workspace`（workspace 聚合包，没有 `dsh.bundle`），只贴 `https://github.com/FENG-DEAN/dsh-pseudo-agi` 会被装成聚合包，再被判定 `not-bundle` 撤销。
 
 装好后**必须**把 `workspaceRoot` 覆盖成你的工程绝对路径——patch 里默认的 `.` 是宿主进程 cwd：
 
