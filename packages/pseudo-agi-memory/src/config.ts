@@ -51,6 +51,15 @@ export interface MemoryConfig {
   readonly verifyFileEvidence: boolean
   /** Keep a human-readable working-memory digest in `<root>/../working.md`. */
   readonly writeWorkingDigest: boolean
+  /**
+   * Create a starter `AGI_STATE.md` at the workspace root on first load.
+   *
+   * The startup protocol reads that file before recall, so a fresh install with
+   * no file would make its first step read nothing and the panel would show an
+   * empty workbench forever. The skeleton is written only when the file is
+   * absent, never overwritten, and skipped under a `read-only` session policy.
+   */
+  readonly createBench: boolean
 }
 
 /** Schemastery schema; invalid config fails at load time. */
@@ -67,6 +76,7 @@ export const Config: z<MemoryConfig> = z.object({
   minConfidenceToInject: z.number().default(0.5),
   verifyFileEvidence: z.boolean().default(true),
   writeWorkingDigest: z.boolean().default(true),
+  createBench: z.boolean().default(true),
 })
 
 /**

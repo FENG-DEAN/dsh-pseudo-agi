@@ -12,6 +12,7 @@
  */
 
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -129,6 +130,52 @@ try {
     forks.push(app.plugin(governance, governanceConfig))
     await waitFor('governance tool', () => toolNames().length === 9)
     assert.ok(toolNames().includes('governance_report'))
+  })
+
+  await check('首次加载创建 AGI_STATE.md 骨架（启动协议第一步读它）', async () => {
+    const bench = join(workspace, 'AGI_STATE.md')
+    await waitFor('workbench skeleton', () => existsSync(bench))
+    const text = await readFile(bench, 'utf8')
+    assert.match(text, /当前工作台/)
+    assert.match(text, /## 下一步/)
+    assert.match(text, /## 验证记录/)
+  })
+
+  await check('已有工作台不被覆盖；createBench:false 与 read-only 都不创建', async () => {
+    const keepRoot = await mkdtemp(join(tmpdir(), 'pseudo-agi-bench-keep-'))
+    const own = '# 我自己写的工作台\n\n关键结论。\n'
+    await writeFile(join(keepRoot, 'AGI_STATE.md'), own, 'utf8')
+    const offRoot = await mkdtemp(join(tmpdir(), 'pseudo-agi-bench-off-'))
+    const roRoot = await mkdtemp(join(tmpdir(), 'pseudo-agi-bench-ro-'))
+    const extraForks = []
+    try {
+      for (const [root, extra, policy] of [
+        [keepRoot, {}, undefined],
+        [offRoot, { createBench: false }, undefined],
+        [roRoot, {}, 'read-only'],
+      ]) {
+        const sub = new Context()
+        extraForks.push(sub.plugin(SystemPrompt, { includeHarnessIdentity: true }))
+        await waitFor('systemPrompt service', () => sub.get('systemPrompt') !== undefined)
+        extraForks.push(sub.plugin(ToolsService, {}))
+        await waitFor('tools service', () => sub.get('tools') !== undefined)
+        if (policy !== undefined) {
+          extraForks.push(sub.plugin({
+            name: 'fake-policy',
+            apply(ctx) { ctx.provide('sandboxPolicy', { resolve: () => ({ mode: policy }) }) },
+          }))
+        }
+        extraForks.push(sub.plugin(memory, resolveConfig(memory.Config, { workspaceRoot: root, ...extra })))
+      }
+      // The seeding write is fire-and-forget; wait past it, then assert.
+      await new Promise(resolveWait => setTimeout(resolveWait, 250))
+      assert.equal(await readFile(join(keepRoot, 'AGI_STATE.md'), 'utf8'), own)
+      assert.equal(existsSync(join(offRoot, 'AGI_STATE.md')), false)
+      assert.equal(existsSync(join(roRoot, 'AGI_STATE.md')), false)
+    } finally {
+      for (const fork of extraForks.reverse()) await fork.dispose().catch(() => {})
+      for (const root of [keepRoot, offRoot, roRoot]) await rm(root, { recursive: true, force: true })
+    }
   })
 
   console.log('\n[2] guard 是单调否决（checkGuards 真实路径）')

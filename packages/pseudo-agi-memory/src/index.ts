@@ -18,8 +18,9 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { access } from 'node:fs/promises'
-import { isAbsolute, resolve } from 'node:path'
+import { existsSync } from 'node:fs'
+import { access, mkdir, writeFile } from 'node:fs/promises'
+import { isAbsolute, join, resolve } from 'node:path'
 // Type-only imports keep the required service declarations in this module's
 // face without a runtime edge to plugins that may be unloaded.
 import type {} from '@deepseek-ai/dsh-agent'
@@ -38,6 +39,101 @@ import { refreshWorkingDigest } from './digest.js'
 
 export { Config }
 export type { MemoryConfig }
+
+/**
+ * Skeleton for the first `AGI_STATE.md`.
+ *
+ * The startup protocol reads the workbench before recall, so a fresh install
+ * with no file would make its first step read nothing and the panel would show
+ * an empty workbench forever. Section headings match `templates/AGI_STATE.md`
+ * so the documented shape and the created shape agree.
+ */
+const BENCH_SKELETON = `# AGI_STATE — 当前工作台
+
+> 由模型维护：这份文件回答“我正在做什么”，不是事实记忆。
+> 事实记忆在 \`.pseudo-agi/memory/\`，工具轨迹在 \`.pseudo-agi/governance/*.jsonl\`。
+
+## 当前目标
+
+<这一阶段要达成什么。>
+
+## 架构共识
+
+<已经判断过、不需要每轮重新论证的决定。>
+
+## 当前状态
+
+<各层在真机上的实际状态。>
+
+## 下一步（按优先级）
+
+1. <可执行、可验收的一条>
+
+## 阻塞 / 待决
+
+- 无阻塞
+
+## 运行环境
+
+- 工作区：<这个意识在哪个目录工作>
+- 知识根：\`docs/\` + \`.pseudo-agi/memory/\`
+
+## 验证记录
+
+<本轮验证过什么。>
+`
+
+/** The slice of the sandbox-policy service this module needs. */
+interface PolicyProbe {
+  resolve?: () => { mode?: string }
+}
+
+/**
+ * Whether the session's file policy forbids writes.
+ * @param ctx - plugin context.
+ * @returns true only for an explicit `read-only` policy; a host without one is
+ *   treated as permissive, which keeps a minimal deployment working.
+ */
+function sandboxReadOnly(ctx: Context): boolean {
+  try {
+    const get = ctx.get as unknown as (name: string, required?: false) => unknown
+    const policy = get('sandboxPolicy', false) as PolicyProbe | undefined
+    if (policy === undefined || typeof policy.resolve !== 'function') return false
+    return policy.resolve()?.mode === 'read-only'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Seed an empty workbench once, on first load.
+ *
+ * Deliberately narrow: only when the file is absent, never overwritten (the
+ * copy runs with `flag: 'wx'`), skipped under a `read-only` policy, and
+ * switchable off with `createBench: false` for deployments that keep the
+ * workspace root clean.
+ *
+ * @param ctx - plugin context.
+ * @param workspaceRoot - absolute workspace root.
+ * @param config - validated configuration.
+ */
+function seedBench(ctx: Context, workspaceRoot: string, config: MemoryConfig): void {
+  if (!config.createBench) return
+  const path = join(workspaceRoot, 'AGI_STATE.md')
+  if (existsSync(path)) return
+  if (sandboxReadOnly(ctx)) {
+    ctx.logger.warn('pseudo-agi-memory: read-only policy; AGI_STATE.md skeleton not created')
+    return
+  }
+  void mkdir(workspaceRoot, { recursive: true })
+    .then(() => writeFile(path, BENCH_SKELETON, { encoding: 'utf8', flag: 'wx' }))
+    .catch((error: NodeJS.ErrnoException) => {
+      // EEXIST means another load won the race; that is the desired outcome.
+      if (error.code !== 'EEXIST') {
+        ctx.logger.warn(`pseudo-agi-memory: AGI_STATE.md skeleton not created: ${String(error)}`)
+      }
+    })
+}
 export type { PseudoAgiMemoryRecallEvent }
 export type { MemoryLayer, MemoryRecord, Evidence } from './store.js'
 export { MEMORY_LAYERS } from './store.js'
@@ -80,6 +176,9 @@ export function apply(ctx: Context, config: MemoryConfig): void {
   // folder). One pointer file decides; see `@pseudo-agi/store`.
   const location = resolveStore({ workspaceRoot, storeRoot: config.storeRoot })
   if (location.warning !== undefined) report(`store pointer ignored: ${location.warning}`)
+  // The startup protocol reads the workbench first; seed it once so a fresh
+  // workspace does not start its first step with "not found".
+  seedBench(ctx, workspaceRoot, config)
   const store = new MemoryStore(storePath(location, config.root))
   // Keyed by the live Agent object, so disposal of an agent drops its block.
   const injected = new WeakMap<object, string>()

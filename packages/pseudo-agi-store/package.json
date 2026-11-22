@@ -1,6 +1,6 @@
 {
   "name": "@pseudo-agi/store",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Where the pseudo-AGI knowledge base lives: one pointer file, one resolver, and a verified move/rollback primitive shared by every layer",
   "type": "module",
   "main": "index.js",

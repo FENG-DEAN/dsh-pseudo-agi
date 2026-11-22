@@ -1,6 +1,6 @@
 {
   "name": "@pseudo-agi/panel",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Whale-girl AGI management panel for the DeepSeek Harness: a left-sidebar entry plus a read-only panel over the pseudo-AGI state (layers, memories, event journal, working bench)",
   "type": "module",
   "exports": {
@@ -49,6 +49,6 @@
     }
   },
   "dependencies": {
-    "@pseudo-agi/store": "workspace:^0.4.0"
+    "@pseudo-agi/store": "workspace:^0.4.1"
   }
 }

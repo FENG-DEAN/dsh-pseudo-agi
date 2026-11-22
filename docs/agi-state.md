@@ -9,7 +9,7 @@
 | `.pseudo-agi/governance/*.jsonl` | 发生过什么（审计） | 治理层，只追加 | ❌ |
 | `<workspace>/docs/**` | 项目知识（`kb_search` 的检索根） | 人 | ✅ 属于项目 |
 
-三类运行时数据都会记录本机绝对路径、端口、会话 id 和未公开的实验结论，所以 `.gitignore` 把它们整体排除。首次运行时插件会自行创建；想预置一份，从 [`templates/AGI_STATE.md`](../templates/AGI_STATE.md) 复制到工作区根。
+三类运行时数据都会记录本机绝对路径、端口、会话 id 和未公开的实验结论，所以 `.gitignore` 把它们整体排除。`.pseudo-agi/` 树由各层在首次写入时创建；`AGI_STATE.md` 由 memory 层在**首次加载时创建一份空骨架**（配置项 `createBench`，默认开；已有文件绝不覆盖，`read-only` 会话策略下跳过）。想预置一份带逐节说明的版本，从 [`templates/AGI_STATE.md`](../templates/AGI_STATE.md) 复制到工作区根，覆盖掉骨架即可。
 
 ## 工作台不是记忆
 

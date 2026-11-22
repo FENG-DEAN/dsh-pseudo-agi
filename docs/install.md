@@ -46,15 +46,15 @@ pnpm verify            # build + smoke + store-test + load-test + panel-test + b
 
 ```bash
 pnpm pack-bundle
-# → dist/pseudo-agi-bundle-0.4.0.tgz + .manifest.json（sha256、包版本、文件数）；挂 Release 用
+# → dist/pseudo-agi-bundle-0.4.1.tgz + .manifest.json（sha256、包版本、文件数）；挂 Release 用
 ```
 
 四种安装入口：
 
 | 入口 | spec |
 | --- | --- |
-| 本地文件 | `pnpm add ./dist/pseudo-agi-bundle-0.4.0.tgz` |
-| 在线 tarball | `pnpm add https://example.com/pseudo-agi-bundle-0.4.0.tgz`（GitHub Release、静态站点、对象存储都可以） |
+| 本地文件 | `pnpm add ./dist/pseudo-agi-bundle-0.4.1.tgz` |
+| 在线 tarball | `pnpm add https://example.com/pseudo-agi-bundle-0.4.1.tgz`（GitHub Release、静态站点、对象存储都可以） |
 | GitHub 仓库 | `pnpm add "github:<owner>/<repo>#<commit>"`（仓库已带 `vendor/` 与 `client.js`，安装时不构建） |
 | 插件页 | 把上面任一 spec 贴进插件管理器的安装输入框（`parseInstallSpec` 认绝对路径、tarball URL、Git 地址、registry 包名） |
 
@@ -103,12 +103,12 @@ pnpm bundle-test
 // （用 bundle 的话走 §2.1，一条 spec 就够，不需要 overrides。）
 {
   "dependencies": {
-    "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.4.0.tgz",
-    "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.4.0.tgz",
-    "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.4.0.tgz",
-    "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.4.0.tgz",
-    "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.4.0.tgz",
-    "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.4.0.tgz"
+    "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.4.1.tgz",
+    "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.4.1.tgz",
+    "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.4.1.tgz",
+    "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.4.1.tgz",
+    "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.4.1.tgz",
+    "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.4.1.tgz"
   }
 }
 ```
@@ -117,12 +117,12 @@ pnpm bundle-test
 # profile/pnpm-workspace.yaml —— overrides 在 pnpm 11 已迁到这里；
 # package.json 里的 "pnpm.overrides" 会被忽略（只有一条警告）。
 overrides:
-  "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.4.0.tgz"
-  "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.4.0.tgz"
-  "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.4.0.tgz"
-  "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.4.0.tgz"
-  "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.4.0.tgz"
-  "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.4.0.tgz"
+  "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.4.1.tgz"
+  "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.4.1.tgz"
+  "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.4.1.tgz"
+  "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.4.1.tgz"
+  "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.4.1.tgz"
+  "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.4.1.tgz"
 ```
 
 `@pseudo-agi/store` 必须同时出现在两处：它是三个插件包的**运行时**依赖（不是 peer），缺了它 `memory`/`tools` 一加载就 `ERR_MODULE_NOT_FOUND`；而它们的 `^0.3.0` 只有 override 才能落回本地 tarball。bundle 不需要这一套——它自带 `vendor/`，装它一条 spec 即可（§2.1）。
@@ -209,6 +209,7 @@ DSH 安装 bundle 的方式（插件管理器或 profile 的 `cordis.yml`）由�
 | `minConfidenceToInject` | `0.5` | 低于此置信度的记录不被注入 |
 | `verifyFileEvidence` | `true` | 提交前校验 `file` 证据存在性 |
 | `writeWorkingDigest` | `true` | 记忆树变化时刷新 `<root>/../working.md`（每轮首步 + 每次写入 + 轮末） |
+| `createBench` | `true` | 首次加载时在工作区根创建 `AGI_STATE.md` 空骨架；已有文件不覆盖，`read-only` 会话策略下跳过 |
 
 ### `@pseudo-agi/tools`
 
