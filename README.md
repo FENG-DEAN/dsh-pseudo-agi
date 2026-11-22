@@ -1,4 +1,4 @@
-# 伪AGI · DSH 插件工程
+﻿# 伪AGI · DSH 插件工程
 
 > 仓库：https://github.com/FENG-DEAN/dsh-pseudo-agi
 
@@ -29,7 +29,7 @@
 | 来源 | 命令 |
 | --- | --- |
 | npm（发布后） | `pnpm add @pseudo-agi/bundle` |
-| GitHub | `pnpm add "github:<owner>/<repo>#<commit>&path:packages/pseudo-agi-bundle"` |
+| GitHub | `pnpm add "github:FENG-DEAN/dsh-pseudo-agi#<commit>&path:packages/pseudo-agi-bundle"` |
 | tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.1.0.tgz` |
 
 DSH 插件页的安装输入框接受同样的 spec（包名 / 绝对路径 / tarball URL / Git 地址）。

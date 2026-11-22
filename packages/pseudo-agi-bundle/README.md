@@ -1,4 +1,4 @@
-# @pseudo-agi/bundle
+﻿# @pseudo-agi/bundle
 
 鲸鱼娘 AGI 的分发单元，也是**唯一需要安装的包**。它把五层实现 + 知识库位置库 + 面板客户端装在一起，装它一个就够。
 
@@ -32,7 +32,7 @@ package/
 pnpm add @pseudo-agi/bundle
 
 # 直接从 GitHub 安装（不需要构建，仓库里已带产物）
-pnpm add "github:<owner>/<repo>#<commit>&path:packages/pseudo-agi-bundle"
+pnpm add "github:FENG-DEAN/dsh-pseudo-agi#<commit>&path:packages/pseudo-agi-bundle"
 
 # 发布产物 / GitHub Release 上的 tarball
 pnpm add https://github.com/<owner>/<repo>/releases/download/v0.1.0/pseudo-agi-bundle-0.1.0.tgz
