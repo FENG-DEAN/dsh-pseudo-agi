@@ -14,8 +14,9 @@
     "bundle-test": "node scripts/bundle-test.mjs",
     "release-check": "node scripts/release-check.mjs",
     "pack-bundle": "node scripts/pack-bundle.mjs",
+    "vendor": "node scripts/vendor-layers.mjs",
     "clean:build": "node scripts/clean.mjs",
-    "verify": "pnpm -r run build && pnpm smoke && pnpm store-test && pnpm load-test && pnpm panel-test && pnpm bundle-test && pnpm release-check"
+    "verify": "pnpm -r run build && pnpm vendor && pnpm smoke && pnpm store-test && pnpm load-test && pnpm panel-test && pnpm bundle-test && pnpm release-check"
   },
   "engines": {
     "node": ">=20.11"

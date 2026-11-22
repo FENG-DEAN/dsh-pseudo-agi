@@ -1,0 +1,17 @@
+# 统一行尾：仓库内一律 LF，检出到工作区也保持 LF。
+#
+# 这不是风格偏好：`packages/pseudo-agi-bundle/vendor/` 是脚本从编译产物复制来的
+# 生成文件，提交进仓库供"无构建安装"使用。若检出时行尾被平台改成 CRLF，
+# 那么重新生成就会产生整棵树的伪改动，`pnpm verify` 之后工作区永远是脏的。
+* text=auto eol=lf
+
+# Windows 脚本必须保持 CRLF（本工程目前没有，留作约定）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制：不做任何转换
+*.png binary
+*.jpg binary
+*.gif binary
+*.webp binary
+*.tgz binary

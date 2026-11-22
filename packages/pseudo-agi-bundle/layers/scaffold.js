@@ -1,8 +1,8 @@
 /**
- * Consciousness-scaffold entry point for the bundled artifact.
+ * Consciousness-scaffold entry point.
  *
- * The patch names this specifier instead of `@pseudo-agi/scaffold` so the
- * loader can resolve it from the profile while the implementation stays in the
- * bundle's own `node_modules`. See ./README.md.
+ * Re-exports the **vendored** copy by relative path. A profile that fetched this
+ * package has no install step for its siblings, so nothing here may resolve a
+ * package name that lives outside the bundle. See ../vendor/README.md.
  */
-export * from '@pseudo-agi/scaffold'
+export * from '../vendor/node_modules/@pseudo-agi/scaffold/lib/index.js'

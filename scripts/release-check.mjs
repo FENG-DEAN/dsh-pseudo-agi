@@ -2,14 +2,16 @@
  * Release preflight: what would actually be published, and is it what we mean to
  * publish.
  *
- * Two mistakes this exists for, both already observed in this project:
+ * Three mistakes this exists for, all already observed in this project:
  *
  *   1. `tsc` never deletes, so a removed source file left
  *      `pseudo-agi-scaffold/lib/router.js` behind and `files` shipped it.
- *   2. `pnpm pack` on the bundle expands `bundledDependencies` through the
- *      workspace symlinks and drags host packages in
- *      (`node_modules/@deepseek-ai/cosmokit/LICENSE`). The publishable bundle is
- *      therefore the `pack-bundle` artifact, never the source directory.
+ *   2. `pnpm pack` on a bundle with `bundledDependencies` expands the workspace
+ *      symlinks and drags host packages in
+ *      (`node_modules/@deepseek-ai/cosmokit/LICENSE`) — so the bundle carries a
+ *      committed `vendor/` copy instead, and must stay dependency-free.
+ *   3. A vendored copy that nobody rebuilds silently ships yesterday's code, so
+ *      every vendored file is compared byte-for-byte with the built package.
  *
  * A tarball is the only place those become visible, so this runs `pnpm pack` for
  * the six layer packages and `pack-bundle` for the artifact, then reads both
@@ -20,10 +22,12 @@
 
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { pnpmCommand } from './lib/pnpm-command.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packagesDir = join(projectRoot, 'packages')
@@ -38,15 +42,25 @@ const PUBLISHED = {
   'pseudo-agi-store': { entries: ['index.js', 'index.d.ts'] },
 }
 
-/** Packages the bundle artifact carries inside its node_modules. */
-const CARRIED = [
-  '@pseudo-agi/governance',
-  '@pseudo-agi/memory',
-  '@pseudo-agi/panel',
-  '@pseudo-agi/scaffold',
-  '@pseudo-agi/store',
-  '@pseudo-agi/tools',
-]
+/** What each layer contributes to the bundle's committed `vendor/` copy. */
+const VENDOR_SOURCES = {
+  store: ['index.js', 'index.d.ts'],
+  memory: ['lib'],
+  tools: ['lib'],
+  scaffold: ['lib'],
+  governance: ['lib'],
+  panel: ['index.js', 'client.js'],
+}
+
+/** Entry file each vendored layer exposes, for artifact content checks. */
+const VENDOR_ENTRIES = {
+  store: 'index.js',
+  memory: 'lib/index.js',
+  tools: 'lib/index.js',
+  scaffold: 'lib/index.js',
+  governance: 'lib/index.js',
+  panel: 'index.js',
+}
 
 /** Patch rows, in order; each must resolve through a bundle subpath. */
 const LAYER_ENTRIES = ['memory', 'tools', 'scaffold', 'governance', 'panel']
@@ -90,12 +104,6 @@ async function check(name, body) {
   }
 }
 
-function pnpmCommand() {
-  const execpath = process.env.npm_execpath
-  if (typeof execpath === 'string' && execpath.length > 0) return { command: process.execPath, args: [execpath] }
-  return { command: 'pnpm', args: [] }
-}
-
 function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options })
 }
@@ -112,6 +120,22 @@ function tarballEntries(tarball) {
 /** Read one `package.json` inside a tarball without unpacking the rest. */
 function tarballManifest(tarball) {
   return JSON.parse(run('tar', ['-xzOf', tarball, 'package/package.json']))
+}
+
+/** Every file under `dir`, as paths relative to it, sorted. */
+async function walkRelative(dir, prefix = '') {
+  const out = []
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const rel = prefix === '' ? entry.name : `${prefix}/${entry.name}`
+    if (entry.isDirectory()) out.push(...await walkRelative(join(dir, entry.name), rel))
+    else out.push(rel)
+  }
+  return out.sort()
+}
+
+/** SHA-256 of one file. */
+async function hashFile(path) {
+  return createHash('sha256').update(await readFile(path)).digest('hex')
 }
 
 const staging = await mkdtemp(join(tmpdir(), 'pseudo-agi-release-'))
@@ -197,24 +221,63 @@ try {
     })
   }
 
-  console.log('\n[3b] 组合包产物（pack-bundle，不是 pnpm pack）')
+  console.log('\n[3b] 组合包是自包含的（vendor 已提交、产物开箱即用）')
 
-  run(command, [...args, 'run', 'pack-bundle', '--', '--no-build', '--out', distDir], { cwd: projectRoot })
+  await check('vendor 里的六个包与各自源码编译产物逐文件一致', async () => {
+    for (const [name, entries] of Object.entries(VENDOR_SOURCES)) {
+      const source = join(packagesDir, `pseudo-agi-${name}`)
+      const vendored = join(packagesDir, 'pseudo-agi-bundle', 'vendor', 'node_modules', '@pseudo-agi', name)
+      const expected = new Set(['package.json', 'README.md', 'LICENSE'])
+      for (const item of entries) {
+        const path = join(source, item)
+        const info = await stat(path)
+        if (info.isDirectory()) {
+          for (const file of await walkRelative(path)) {
+            if (!file.endsWith('.map')) expected.add(`${item}/${file}`)
+          }
+        } else {
+          expected.add(item)
+        }
+      }
+      const actual = new Set(await walkRelative(vendored))
+      assert.deepEqual([...actual].sort(), [...expected].sort(),
+        `${name}: vendor differs from the built package (run pnpm vendor)`)
+      for (const file of expected) {
+        const sourceHash = await hashFile(join(source, file))
+        const vendoredHash = await hashFile(join(vendored, file))
+        assert.equal(vendoredHash, sourceHash, `${name}/${file}: vendored copy is stale (run pnpm vendor)`)
+      }
+    }
+  })
+
+  await check('client.js 由 panel 客户端生成，只差 factory id', async () => {
+    const bundleClient = await readFile(join(packagesDir, 'pseudo-agi-bundle', 'client.js'), 'utf8')
+    const panelClient = await readFile(join(packagesDir, 'pseudo-agi-panel', 'client.js'), 'utf8')
+    assert.equal(bundleClient, panelClient.replace("id: '@pseudo-agi/panel'", "id: '@pseudo-agi/bundle'"))
+  })
+
+  await check('组合包不声明依赖（安装时无需解析任何包名）', async () => {
+    const manifest = JSON.parse(await readFile(join(packagesDir, 'pseudo-agi-bundle', 'package.json'), 'utf8'))
+    assert.equal(Object.keys(manifest.dependencies ?? {}).length, 0, 'bundle must stay dependency-free')
+    assert.equal(manifest.bundledDependencies, undefined, 'vendored files replace bundledDependencies')
+  })
+
+  run(command, [...args, 'run', 'pack-bundle', '--', '--out', distDir], { cwd: projectRoot })
   const artifactFile = (await readdir(distDir)).find(entry => entry.endsWith('.tgz'))
   assert.ok(artifactFile, 'pack-bundle produced no tarball')
   artifact = join(distDir, artifactFile)
   artifactManifest = tarballManifest(artifact)
 
-  await check('产物自包含六个实现包、五行入口与面板客户端', async () => {
+  await check('产物携带 vendor 六包、五行入口、client.js 与 LICENSE', async () => {
     const entries = tarballEntries(artifact)
     const required = ['package.json', 'README.md', 'LICENSE', 'index.js', 'cordis.patch.yml', 'client.js',
       ...LAYER_ENTRIES.map(layer => `layers/${layer}.js`),
-      ...CARRIED.map(name => `node_modules/${name}/package.json`)]
+      ...Object.entries(VENDOR_ENTRIES).map(([name, entry]) => `vendor/node_modules/@pseudo-agi/${name}/${entry}`)]
     for (const entry of required) assert.ok(entries.includes(entry), `missing ${entry}`)
     console.log(`       → ${entries.length} files, ${(await stat(artifact)).size} bytes`)
   })
 
-  await check('产物里没有宿主包、没有构建残留', () => {
+  await check('产物里没有宿主包、没有 source map、没有构建残留', () => {
     for (const entry of tarballEntries(artifact)) {
       for (const pattern of [...FORBIDDEN, /node_modules\/@deepseek-ai\//]) {
         assert.doesNotMatch(entry, pattern, `forbidden entry in artifact: ${entry}`)
@@ -222,19 +285,20 @@ try {
     }
   })
 
-  await check('产物 manifest 用真实 semver，且 bundled 列表恰好覆盖六个包', () => {
+  await check('产物 manifest 用真实 semver，且声明为公开包', () => {
     for (const [dependency, spec] of Object.entries(artifactManifest.dependencies ?? {})) {
       assert.ok(!String(spec).startsWith('workspace:'), `dependencies.${dependency} still uses the workspace protocol`)
     }
     assert.equal(artifactManifest.publishConfig?.access, 'public')
-    assert.deepEqual([...artifactManifest.bundledDependencies].sort(), [...CARRIED].sort())
+    assert.equal(artifactManifest.dependencies, undefined, 'artifact must not carry dependencies')
   })
 
-  await check('源码目录被 prepublishOnly 挡住（不能直接 pnpm publish）', async () => {
+  await check('prepublishOnly 检查生成物存在（缺 vendor 就拒绝发布）', async () => {
     const manifest = JSON.parse(await readFile(join(packagesDir, 'pseudo-agi-bundle', 'package.json'), 'utf8'))
-    assert.equal(manifest.scripts?.prepublishOnly, 'node ../../scripts/assert-packed-bundle.mjs')
-    const exists = await stat(join(packagesDir, 'pseudo-agi-bundle', 'client.js')).then(() => true, () => false)
-    assert.equal(exists, false, 'packages/pseudo-agi-bundle/client.js must be generated, not committed')
+    assert.equal(manifest.scripts?.prepublishOnly, 'node ../../scripts/assert-vendored.mjs')
+    for (const file of ['client.js', 'vendor/node_modules/@pseudo-agi/store/index.js']) {
+      await stat(join(packagesDir, 'pseudo-agi-bundle', file))
+    }
   })
 
   console.log('\n[4] 组合包接线')
@@ -243,6 +307,16 @@ try {
     const patch = await readFile(join(packagesDir, 'pseudo-agi-bundle', 'cordis.patch.yml'), 'utf8')
     const names = [...patch.matchAll(/^\s*name: '([^']+)'/gm)].map(match => match[1])
     assert.deepEqual(names, LAYER_ENTRIES.map(layer => `@pseudo-agi/bundle/layers/${layer}`))
+  })
+
+  await check('每个 layer 入口用相对路径指向 vendor，没有裸包名', async () => {
+    for (const layer of LAYER_ENTRIES) {
+      const text = await readFile(join(packagesDir, 'pseudo-agi-bundle', 'layers', `${layer}.js`), 'utf8')
+      const target = /export \* from '(\.\.\/vendor\/[^']+)'/.exec(text)?.[1]
+      assert.ok(target, `${layer}.js must re-export its vendored copy by relative path`)
+      assert.doesNotMatch(text, /from '@pseudo-agi\//, `${layer}.js must not import a bare package name`)
+      await stat(join(packagesDir, 'pseudo-agi-bundle', 'layers', target))
+    }
   })
 
   await check('产物声明了 patch 与客户端半侧', () => {

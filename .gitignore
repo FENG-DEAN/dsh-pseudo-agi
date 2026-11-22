@@ -1,9 +1,15 @@
 # 依赖与构建产物
-node_modules/
-lib/
+/node_modules/
+/packages/*/node_modules/
+# 只忽略包根下的 lib（tsc 产物）；vendor 里的 lib 是随包携带的编译副本，必须入库。
+/packages/*/lib/
 dist/
 *.tsbuildinfo
 .DS_Store
+
+# vendor/ 是例外：bundle 把六个层的编译产物随包携带并提交，
+# 这样从 Git 或 npm 安装时不需要任何构建步骤（见 packages/pseudo-agi-bundle/vendor/README.md）。
+# 上面的 /packages/*/node_modules/ 只匹配包根，不匹配 vendor/node_modules。
 
 # 本地测试脚本的临时目录
 tmp/

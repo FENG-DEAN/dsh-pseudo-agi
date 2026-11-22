@@ -16,9 +16,11 @@
     "index.js",
     "client.js",
     "layers",
+    "vendor",
     "cordis.patch.yml",
     "locale",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "author": "FENG-DEAN <firebanyan@gmail.com>",
   "license": "MIT",
@@ -51,23 +53,7 @@
       ]
     }
   },
-  "dependencies": {
-    "@pseudo-agi/governance": "workspace:^0.1.0",
-    "@pseudo-agi/memory": "workspace:^0.1.0",
-    "@pseudo-agi/panel": "workspace:^0.1.0",
-    "@pseudo-agi/scaffold": "workspace:^0.1.0",
-    "@pseudo-agi/store": "workspace:^0.1.0",
-    "@pseudo-agi/tools": "workspace:^0.1.0"
-  },
-  "bundledDependencies": [
-    "@pseudo-agi/governance",
-    "@pseudo-agi/memory",
-    "@pseudo-agi/panel",
-    "@pseudo-agi/scaffold",
-    "@pseudo-agi/store",
-    "@pseudo-agi/tools"
-  ],
   "scripts": {
-    "prepublishOnly": "node ../../scripts/assert-packed-bundle.mjs"
+    "prepublishOnly": "node ../../scripts/assert-vendored.mjs"
   }
 }

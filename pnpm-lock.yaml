@@ -18,26 +18,7 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
-  packages/pseudo-agi-bundle:
-    dependencies:
-      '@pseudo-agi/governance':
-        specifier: workspace:^0.1.0
-        version: link:../pseudo-agi-governance
-      '@pseudo-agi/memory':
-        specifier: workspace:^0.1.0
-        version: link:../pseudo-agi-memory
-      '@pseudo-agi/panel':
-        specifier: workspace:^0.1.0
-        version: link:../pseudo-agi-panel
-      '@pseudo-agi/scaffold':
-        specifier: workspace:^0.1.0
-        version: link:../pseudo-agi-scaffold
-      '@pseudo-agi/store':
-        specifier: workspace:^0.1.0
-        version: link:../pseudo-agi-store
-      '@pseudo-agi/tools':
-        specifier: workspace:^0.1.0
-        version: link:../pseudo-agi-tools
+  packages/pseudo-agi-bundle: {}
 
   packages/pseudo-agi-governance:
     dependencies:

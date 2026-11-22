@@ -27,6 +27,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
+import { pnpmCommand } from './lib/pnpm-command.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -48,12 +49,6 @@ async function check(name, body) {
   }
 }
 
-function pnpmCommand() {
-  const execpath = process.env.npm_execpath
-  if (typeof execpath === 'string' && execpath.length > 0) return { command: process.execPath, args: [execpath] }
-  return { command: 'pnpm', args: [] }
-}
-
 function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options })
 }
@@ -69,13 +64,14 @@ async function runAsync(command, args, options = {}) {
 }
 
 const LAYERS = ['memory', 'tools', 'scaffold', 'governance', 'panel']
+/** Layers the artifact carries under vendor/, with the entry file each exposes. */
 const CARRIED = {
-  store: ['index.js', 'index.d.ts'],
-  memory: ['lib/index.js'],
-  tools: ['lib/index.js'],
-  scaffold: ['lib/index.js'],
-  governance: ['lib/index.js'],
-  panel: ['index.js', 'client.js'],
+  store: 'index.js',
+  memory: 'lib/index.js',
+  tools: 'lib/index.js',
+  scaffold: 'lib/index.js',
+  governance: 'lib/index.js',
+  panel: 'index.js',
 }
 
 const work = await mkdtemp(join(tmpdir(), 'pseudo-agi-dist-'))
@@ -86,7 +82,7 @@ try {
   console.log('\n[1] 自包含产物')
 
   const { command, args } = pnpmCommand()
-  run(command, [...args, 'run', 'pack-bundle', '--', '--no-build', '--out', outDir], { cwd: projectRoot })
+  run(command, [...args, 'run', 'pack-bundle', '--', '--out', outDir], { cwd: projectRoot })
 
   const manifest = JSON.parse(await readFile(join(bundleDir, 'package.json'), 'utf8'))
   const tag = `pseudo-agi-bundle-${manifest.version}`
@@ -100,7 +96,7 @@ try {
     assert.equal(record.sha256, digest)
     assert.deepEqual(Object.keys(record.packages).sort(), Object.keys(CARRIED).sort())
     for (const [name, version] of Object.entries(record.packages)) assert.equal(version, manifest.version, name)
-    console.log(`       → ${bytes} bytes, ${record.unpacked.files} files unpacked`)
+    console.log(`       → ${bytes} bytes, ${record.files} files`)
   })
 
   console.log('\n[2] 一条 spec 安装（本地 tarball）')
@@ -114,37 +110,37 @@ try {
     assert.match(localInstall, /@pseudo-agi\/bundle/)
     assert.doesNotMatch(localInstall, /ERR_PNPM_FETCH_404/)
   })
-  await check('安装后携带六个包（pnpm 保留 tarball 内 node_modules）', async () => {
-    const nested = join(localConsumer, 'node_modules', '@pseudo-agi', 'bundle', 'node_modules', '@pseudo-agi')
-    const names = (await readdir(nested)).sort()
+  await check('安装后携带 vendor 里的六个层（无需任何依赖安装）', async () => {
+    const vendor = join(localConsumer, 'node_modules', '@pseudo-agi', 'bundle', 'vendor', 'node_modules', '@pseudo-agi')
+    const names = (await readdir(vendor)).sort()
     assert.deepEqual(names, Object.keys(CARRIED).sort())
-    for (const [name, files] of Object.entries(CARRIED)) {
-      for (const file of files) await stat(join(nested, name, file))
-    }
+    for (const [name, entry] of Object.entries(CARRIED)) await stat(join(vendor, name, entry))
   })
-  await check('bundle 声明组合包 patch 与客户端半侧', async () => {
+  await check('bundle 声明组合包 patch 与客户端半侧，且没有任何依赖', async () => {
     const installed = JSON.parse(await readFile(
       join(localConsumer, 'node_modules', '@pseudo-agi', 'bundle', 'package.json'), 'utf8'))
     assert.equal(installed.dsh.bundle.patch, './cordis.patch.yml')
     assert.equal(installed.dsh.client.platform, 'web')
     assert.equal(installed.dsh.client.immediately, true)
     assert.ok(Array.isArray(installed.dsh.client.inject) && installed.dsh.client.inject.length > 0)
-    assert.equal(installed.dependencies['@pseudo-agi/memory'], '^0.1.0', 'workspace: protocol must be rewritten')
+    assert.equal(installed.dependencies, undefined, 'a self-contained bundle must not declare dependencies')
   })
 
-  console.log('\n[3] patch 五行按 profile scope 解析到内置副本')
+  console.log('\n[3] patch 五行按 profile scope 解析到包内 vendor')
 
   const consumerRequire = createRequire(join(localConsumer, 'package.json'))
-  await check('每个 layers/*.js 都能从 profile 解析，并转发到内置包', async () => {
+  await check('每个 layers/*.js 都能从 profile 解析，并相对指向 vendor', async () => {
     for (const layer of LAYERS) {
       const entry = consumerRequire.resolve(`@pseudo-agi/bundle/layers/${layer}`)
       assert.ok(entry.includes(join('bundle', 'layers')), `${layer}: unexpected entry ${entry}`)
       const text = await readFile(entry, 'utf8')
-      assert.match(text, new RegExp(`export \\* from '@pseudo-agi/${layer}'`), `${layer}: missing re-export`)
-      // Second hop: inside the bundle, the package name resolves to the carried copy.
-      const inner = createRequire(entry).resolve(`@pseudo-agi/${layer}`)
-      assert.ok(inner.includes(join('bundle', 'node_modules', '@pseudo-agi', layer)),
-        `${layer}: resolved outside the bundle (${inner})`)
+      const target = /export \* from '(\.\.\/vendor\/[^']+)'/.exec(text)?.[1]
+      assert.ok(target, `${layer}: layer must re-export its vendored copy by relative path`)
+      assert.doesNotMatch(text, /from '@pseudo-agi\//, `${layer}: must not import a bare package name`)
+      const resolved = resolve(dirname(entry), target)
+      await stat(resolved)
+      assert.ok(resolved.includes(join('bundle', 'vendor', 'node_modules', '@pseudo-agi')),
+        `${layer}: resolved outside the bundle (${resolved})`)
     }
   })
   await check('patch 只引用包内子路径，没有裸的 @pseudo-agi/<layer>', async () => {
@@ -152,21 +148,22 @@ try {
     const names = [...patch.matchAll(/^\s*name: '([^']+)'/gm)].map(match => match[1])
     assert.deepEqual(names, LAYERS.map(layer => `@pseudo-agi/bundle/layers/${layer}`))
   })
-  await check('内置包之间的依赖也在 bundle 内解析（store 被三层共用）', () => {
+  await check('vendor 内部仍按普通 node_modules 链解析（store 被四层共用）', () => {
     for (const owner of ['memory', 'tools', 'governance', 'panel']) {
-      const from = join(localConsumer, 'node_modules', '@pseudo-agi', 'bundle', 'node_modules', '@pseudo-agi', owner, 'package.json')
+      const from = join(localConsumer, 'node_modules', '@pseudo-agi', 'bundle', 'vendor', 'node_modules',
+        '@pseudo-agi', owner, 'package.json')
       const resolved = createRequire(from).resolve('@pseudo-agi/store')
-      assert.ok(resolved.includes(join('bundle', 'node_modules', '@pseudo-agi', 'store')),
+      assert.ok(resolved.includes(join('bundle', 'vendor', 'node_modules', '@pseudo-agi', 'store')),
         `${owner}: store resolved outside the bundle (${resolved})`)
     }
   })
-  await check('开发形态（link）下同一套 patch 也能解析', () => {
-    // A `link:` install has no nested copy: the re-export must reach the sibling
-    // workspace packages through `packages/pseudo-agi-bundle/node_modules`.
+  await check('仓库里的 layer 入口同样指向已提交的 vendor（link 形态可用）', async () => {
     for (const layer of LAYERS) {
       const entry = join(bundleDir, 'layers', `${layer}.js`)
-      const inner = createRequire(entry).resolve(`@pseudo-agi/${layer}`)
-      assert.ok(inner.includes(`pseudo-agi-${layer}`), `${layer}: ${inner}`)
+      const text = await readFile(entry, 'utf8')
+      const target = /export \* from '(\.\.\/vendor\/[^']+)'/.exec(text)?.[1]
+      assert.ok(target, `${layer}: must re-export by relative path`)
+      await stat(join(bundleDir, 'layers', target))
     }
   })
 
@@ -190,8 +187,8 @@ try {
   })
   await check('客户端内容与 panel 包一致（只差 factory id）', async () => {
     const bundleClient = await readFile(join(localConsumer, 'node_modules', '@pseudo-agi', 'bundle', 'client.js'), 'utf8')
-    const panelClient = await readFile(join(localConsumer, 'node_modules', '@pseudo-agi', 'bundle', 'node_modules',
-      '@pseudo-agi', 'panel', 'client.js'), 'utf8')
+    const panelClient = await readFile(join(localConsumer, 'node_modules', '@pseudo-agi', 'bundle', 'vendor',
+      'node_modules', '@pseudo-agi', 'panel', 'client.js'), 'utf8')
     assert.equal(bundleClient, panelClient.replace("id: '@pseudo-agi/panel'", "id: '@pseudo-agi/bundle'"))
   })
 
@@ -222,14 +219,18 @@ try {
     const installed = join(onlineConsumer, 'node_modules', '@pseudo-agi', 'bundle')
     await stat(join(installed, 'cordis.patch.yml'))
     await stat(join(installed, 'client.js'))
-    for (const name of Object.keys(CARRIED)) await stat(join(installed, 'node_modules', '@pseudo-agi', name, 'package.json'))
+    for (const [name, entry] of Object.entries(CARRIED)) {
+      await stat(join(installed, 'vendor', 'node_modules', '@pseudo-agi', name, entry))
+    }
   })
-  await check('在线装好后，五行同样能在该 profile 里解析', () => {
+  await check('在线装好后，五行同样能在该 profile 里解析', async () => {
     const requireFromOnline = createRequire(join(onlineConsumer, 'package.json'))
     for (const layer of LAYERS) {
       const entry = requireFromOnline.resolve(`@pseudo-agi/bundle/layers/${layer}`)
-      const inner = createRequire(entry).resolve(`@pseudo-agi/${layer}`)
-      assert.ok(inner.includes(join('bundle', 'node_modules', '@pseudo-agi', layer)), `${layer}: ${inner}`)
+      const text = await readFile(entry, 'utf8')
+      const target = /export \* from '(\.\.\/vendor\/[^']+)'/.exec(text)?.[1]
+      assert.ok(target, `${layer}: must re-export by relative path`)
+      await stat(resolve(dirname(entry), target))
     }
   })
 } finally {
