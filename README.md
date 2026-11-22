@@ -24,19 +24,17 @@
 
 ## 安装
 
-一个包，三种来源，装完即用——仓库里已带构建产物（`vendor/` 与 `client.js`），不会在你机器上重新构建：
+**仓库根就是 bundle 包**（单包仓库，和 DSH 官方插件模板同形），所以粘仓库地址就能装：
 
 | 来源 | 命令 |
 | --- | --- |
+| GitHub | `pnpm add github:FENG-DEAN/dsh-pseudo-agi` |
 | npm（发布后） | `pnpm add @pseudo-agi/bundle` |
-| GitHub | `pnpm add "github:FENG-DEAN/dsh-pseudo-agi#v0.2.0&path:packages/pseudo-agi-bundle"` |
-| tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.2.0.tgz` |
+| tarball URL | `pnpm add https://…/pseudo-agi-bundle-0.3.0.tgz` |
 
-DSH 插件页的安装输入框接受同样的 spec（包名 / 绝对路径 / tarball URL / Git 地址）。
+DSH 插件页的安装输入框接受同样的 spec（包名 / 绝对路径 / tarball URL / Git 地址）。仓库里已带构建产物（`vendor/` 与 `client.js`），**不会在你机器上重新构建**。
 
-> **插件页里贴 GitHub 地址时，要贴带 `&path:` 的整串**：
-> `github:FENG-DEAN/dsh-pseudo-agi#v0.2.0&path:packages/pseudo-agi-bundle`
-> 仓库根是 `pseudo-agi-workspace`（workspace 聚合包，没有 `dsh.bundle`），只贴 `https://github.com/FENG-DEAN/dsh-pseudo-agi` 会被装成聚合包，再被判定 `not-bundle` 撤销。
+`packages/` 下是六个层包的源码，它们不进 npm 包（`files` 白名单排除）；Git 安装会带上整仓库副本，功能无影响、体积大一些。
 
 **装好即可用，不需要配置。** `workspaceRoot` 留空时默认落在 `<用户主目录>/dsh-pseudo-agi`（Windows 上是 `C:\Users\<你>\dsh-pseudo-agi`）——稳定、可写，**绝不会回退到 DSH 的安装目录**：
 
@@ -59,19 +57,20 @@ DSH 插件页的安装输入框接受同样的 spec（包名 / 绝对路径 / ta
     workspaceRoot: /absolute/path/to/your/project
 ```
 
-装完可以做什么、完整五行配置、最小可用例子：见 [bundle README](packages/pseudo-agi-bundle/README.md)；逐字段说明见 [docs/install.md](docs/install.md) §4。
+装完可以做什么、完整五行配置、最小可用例子：见 [docs/bundle.md](docs/bundle.md)；逐字段说明见 [docs/install.md](docs/install.md) §4。
 
 ## 目录
 
 | 路径 | 作用 |
 | --- | --- |
+| [package.json](package.json) / `layers/` / `vendor/` / `client.js` | **仓库根 = `@pseudo-agi/bundle`**：patch、五行入口、随包携带的六层实现、面板浏览器半侧 |
 | [packages/pseudo-agi-memory](packages/pseudo-agi-memory) | 分层记忆：工作 / 情景 / 语义 / 程序；Markdown 真源；`memory_recall`、`memory_candidate`、`memory_commit`、`memory_forget` |
 | [packages/pseudo-agi-tools](packages/pseudo-agi-tools) | 受控手脚：`kb_search`、`kb_read`、`controlled_write`、`kb_store` + `ctx.tools.guard()` |
 | [packages/pseudo-agi-scaffold](packages/pseudo-agi-scaffold) | 意识脚手架：每轮首步注入纪律 + 发 `scaffold-step` 事件；**不做路由、不选工具** |
 | [packages/pseudo-agi-governance](packages/pseudo-agi-governance) | 治理层：只读观察器 + 指标 + JSONL 审计 + `governance_report` |
 | [packages/pseudo-agi-panel](packages/pseudo-agi-panel) | 左侧栏只读面板：Host 一条同源路由 + 客户端两个 slot；自验 `dsh-auth` 签名 cookie；显示知识库位置 |
 | [packages/pseudo-agi-store](packages/pseudo-agi-store) | 知识库位置：指针解析 + 迁移/回滚原语（纯库，无构建步骤，不是插件） |
-| [packages/pseudo-agi-bundle](packages/pseudo-agi-bundle) | 自包含分发单元：`dsh.bundle.patch` + 五行 patch + `layers/*` 转发入口 + 面板 `./client`；一条 spec 装齐
+| [docs/bundle.md](docs/bundle.md) | 分发单元说明：仓库根即 bundle、`vendor/` 的来由、安装 / 配置 / 使用 |
 | [docs/architecture.md](docs/architecture.md) | 事件流、注册/释放清单、磁盘布局与知识库活动根、与 DSH 契约的对应关系 |
 | [docs/spec-compliance.md](docs/spec-compliance.md) | 三条硬约束逐条对照；方案里几处 API 名称的纠正 |
 | [docs/install.md](docs/install.md) | 构建、打包、装载、最小闭环配置、验收清单、换位置存储操作 |

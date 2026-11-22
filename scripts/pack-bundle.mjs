@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url'
 import { pnpmCommand } from './lib/pnpm-command.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const bundleDir = join(projectRoot, 'packages', 'pseudo-agi-bundle')
+const bundleDir = projectRoot
 
 /** Layers the artifact must carry, with the entry file each one exposes. */
 const CARRIED = {

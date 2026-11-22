@@ -154,9 +154,11 @@ try {
   console.log('\n[1] 版本与发布元数据')
 
   const manifests = {}
-  for (const name of [...Object.keys(PUBLISHED), 'pseudo-agi-bundle']) {
+  for (const name of Object.keys(PUBLISHED)) {
     manifests[name] = JSON.parse(await readFile(join(packagesDir, name, 'package.json'), 'utf8'))
   }
+  // The repository root IS the bundle, so its manifest joins the same checks.
+  manifests['@pseudo-agi/bundle'] = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
   const versions = new Set(Object.values(manifests).map(manifest => manifest.version))
 
   await check('七个包版本一致', () => {
@@ -165,6 +167,7 @@ try {
   })
 
   for (const [name, manifest] of Object.entries(manifests)) {
+    const directory = name === '@pseudo-agi/bundle' ? projectRoot : join(packagesDir, name)
     await check(`${name} 的发布元数据完整`, () => {
       assert.equal(manifest.publishConfig?.access, 'public', 'publishConfig.access must be "public" (scoped package)')
       assert.ok(manifest.engines?.node, 'engines.node is required')
@@ -175,7 +178,7 @@ try {
       assert.equal(manifest.private, undefined, 'private must not be set')
     })
     await check(`${name} 目录内有 LICENSE`, async () => {
-      const text = await readFile(join(packagesDir, name, 'LICENSE'), 'utf8')
+      const text = await readFile(join(directory, 'LICENSE'), 'utf8')
       assert.match(text, /MIT License/)
       assert.match(text, /Permission is hereby granted/)
     })
@@ -226,7 +229,7 @@ try {
   await check('vendor 里的六个包与各自源码编译产物逐文件一致', async () => {
     for (const [name, entries] of Object.entries(VENDOR_SOURCES)) {
       const source = join(packagesDir, `pseudo-agi-${name}`)
-      const vendored = join(packagesDir, 'pseudo-agi-bundle', 'vendor', 'node_modules', '@pseudo-agi', name)
+      const vendored = join(projectRoot, 'vendor', 'node_modules', '@pseudo-agi', name)
       const expected = new Set(['package.json', 'README.md', 'LICENSE'])
       for (const item of entries) {
         const path = join(source, item)
@@ -251,13 +254,13 @@ try {
   })
 
   await check('client.js 由 panel 客户端生成，只差 factory id', async () => {
-    const bundleClient = await readFile(join(packagesDir, 'pseudo-agi-bundle', 'client.js'), 'utf8')
+    const bundleClient = await readFile(join(projectRoot, 'client.js'), 'utf8')
     const panelClient = await readFile(join(packagesDir, 'pseudo-agi-panel', 'client.js'), 'utf8')
     assert.equal(bundleClient, panelClient.replace("id: '@pseudo-agi/panel'", "id: '@pseudo-agi/bundle'"))
   })
 
   await check('组合包不声明依赖（安装时无需解析任何包名）', async () => {
-    const manifest = JSON.parse(await readFile(join(packagesDir, 'pseudo-agi-bundle', 'package.json'), 'utf8'))
+    const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
     assert.equal(Object.keys(manifest.dependencies ?? {}).length, 0, 'bundle must stay dependency-free')
     assert.equal(manifest.bundledDependencies, undefined, 'vendored files replace bundledDependencies')
   })
@@ -294,28 +297,28 @@ try {
   })
 
   await check('prepublishOnly 检查生成物存在（缺 vendor 就拒绝发布）', async () => {
-    const manifest = JSON.parse(await readFile(join(packagesDir, 'pseudo-agi-bundle', 'package.json'), 'utf8'))
-    assert.equal(manifest.scripts?.prepublishOnly, 'node ../../scripts/assert-vendored.mjs')
+    const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
+    assert.equal(manifest.scripts?.prepublishOnly, 'node scripts/assert-vendored.mjs')
     for (const file of ['client.js', 'vendor/node_modules/@pseudo-agi/store/index.js']) {
-      await stat(join(packagesDir, 'pseudo-agi-bundle', file))
+      await stat(join(projectRoot, file))
     }
   })
 
   console.log('\n[4] 组合包接线')
 
   await check('patch 五行都指向包内子路径', async () => {
-    const patch = await readFile(join(packagesDir, 'pseudo-agi-bundle', 'cordis.patch.yml'), 'utf8')
+    const patch = await readFile(join(projectRoot, 'cordis.patch.yml'), 'utf8')
     const names = [...patch.matchAll(/^\s*name: '([^']+)'/gm)].map(match => match[1])
     assert.deepEqual(names, LAYER_ENTRIES.map(layer => `@pseudo-agi/bundle/layers/${layer}`))
   })
 
   await check('每个 layer 入口用相对路径指向 vendor，没有裸包名', async () => {
     for (const layer of LAYER_ENTRIES) {
-      const text = await readFile(join(packagesDir, 'pseudo-agi-bundle', 'layers', `${layer}.js`), 'utf8')
+      const text = await readFile(join(projectRoot, 'layers', `${layer}.js`), 'utf8')
       const target = /export \* from '(\.\.\/vendor\/[^']+)'/.exec(text)?.[1]
       assert.ok(target, `${layer}.js must re-export its vendored copy by relative path`)
       assert.doesNotMatch(text, /from '@pseudo-agi\//, `${layer}.js must not import a bare package name`)
-      await stat(join(packagesDir, 'pseudo-agi-bundle', 'layers', target))
+      await stat(join(projectRoot, 'layers', target))
     }
   })
 

@@ -17,7 +17,7 @@ import { stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const bundleDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'packages', 'pseudo-agi-bundle')
+const bundleDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 /** Generated files that must be committed for a Git/NPM install to work without a build. */
 const GENERATED = [

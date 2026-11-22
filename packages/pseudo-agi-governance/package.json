@@ -1,6 +1,6 @@
 {
   "name": "@pseudo-agi/governance",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Read-only evaluation and audit layer for the pseudo-AGI: decision/action/outcome triples, metrics, and replayable JSONL",
   "type": "module",
   "main": "lib/index.js",
@@ -45,14 +45,14 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.19.0",
-    "@pseudo-agi/store": "workspace:^0.2.0"
+    "@pseudo-agi/store": "workspace:^0.3.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.1.0",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.5",
     "@deepseek-ai/dsh-util-values": "0.2.2-rc.5",
-    "@pseudo-agi/memory": "^0.2.0",
-    "@pseudo-agi/scaffold": "^0.2.0"
+    "@pseudo-agi/memory": "^0.3.0",
+    "@pseudo-agi/scaffold": "^0.3.0"
   },
   "peerDependenciesMeta": {
     "@pseudo-agi/memory": {

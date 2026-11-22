@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Fill in the repository metadata that a published package should carry.
  *
  * `npm` and the GitHub page both read `repository`, `homepage`, and `bugs` from
@@ -14,7 +14,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const PACKAGES = ['bundle', 'governance', 'memory', 'panel', 'scaffold', 'store', 'tools']
+const PACKAGES = ['governance', 'memory', 'panel', 'scaffold', 'store', 'tools']
 
 const raw = process.argv[2]
 const dryRun = process.argv.includes('--dry-run')

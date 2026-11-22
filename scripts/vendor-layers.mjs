@@ -28,7 +28,10 @@ import { fileURLToPath } from 'node:url'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packagesDir = join(projectRoot, 'packages')
-const bundleDir = join(packagesDir, 'pseudo-agi-bundle')
+// The repository root IS the bundle: `package.json`, `layers/`, `vendor/` and
+// `client.js` live here, so a GitHub install of the repository root is already
+// the bundle (no `path:` needed).
+const bundleDir = projectRoot
 const vendorDir = join(bundleDir, 'vendor', 'node_modules', '@pseudo-agi')
 
 /** What each layer contributes to the vendored copy. `.map` files are skipped. */

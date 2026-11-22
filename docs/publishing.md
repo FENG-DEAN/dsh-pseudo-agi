@@ -46,7 +46,7 @@ gh release create v0.2.0 dist/pseudo-agi-bundle-0.2.0.tgz dist/pseudo-agi-bundle
 
 ```bash
 # 1) GitHub 仓库（最快可用，不需要 npm 发布，也不构建）
-pnpm add "github:<owner>/<repo>#<commit>&path:packages/pseudo-agi-bundle"
+pnpm add "github:<owner>/<repo>#<commit>"
 
 # 2) Release 上的 tgz（可核对 sha256）
 pnpm add https://github.com/<owner>/<repo>/releases/download/v0.2.0/pseudo-agi-bundle-0.2.0.tgz

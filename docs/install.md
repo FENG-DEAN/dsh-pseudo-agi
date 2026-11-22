@@ -46,21 +46,21 @@ pnpm verify            # build + smoke + store-test + load-test + panel-test + b
 
 ```bash
 pnpm pack-bundle
-# → dist/pseudo-agi-bundle-0.2.0.tgz + .manifest.json（sha256、包版本、文件数）；挂 Release 用
+# → dist/pseudo-agi-bundle-0.3.0.tgz + .manifest.json（sha256、包版本、文件数）；挂 Release 用
 ```
 
 四种安装入口：
 
 | 入口 | spec |
 | --- | --- |
-| 本地文件 | `pnpm add ./dist/pseudo-agi-bundle-0.2.0.tgz` |
-| 在线 tarball | `pnpm add https://example.com/pseudo-agi-bundle-0.2.0.tgz`（GitHub Release、静态站点、对象存储都可以） |
-| GitHub 仓库 | `pnpm add "github:<owner>/<repo>#<commit>&path:packages/pseudo-agi-bundle"`（仓库已带 `vendor/` 与 `client.js`，安装时不构建） |
+| 本地文件 | `pnpm add ./dist/pseudo-agi-bundle-0.3.0.tgz` |
+| 在线 tarball | `pnpm add https://example.com/pseudo-agi-bundle-0.3.0.tgz`（GitHub Release、静态站点、对象存储都可以） |
+| GitHub 仓库 | `pnpm add "github:<owner>/<repo>#<commit>"`（仓库已带 `vendor/` 与 `client.js`，安装时不构建） |
 | 插件页 | 把上面任一 spec 贴进插件管理器的安装输入框（`parseInstallSpec` 认绝对路径、tarball URL、Git 地址、registry 包名） |
 
 为什么必须自包含：插件管理器一次只接受一条 spec，而 `@pseudo-agi/*` 不在任何 registry 上——只声明依赖的 bundle 装上去会以 `ERR_PNPM_FETCH_404` 失败（`@pseudo-agi/store` 是第一个 404 的）。**不能**用 `bundledDependencies` 解决：实测 `pnpm pack` 会顺着 workspace 软链接把宿主包（`@deepseek-ai/*`）一起打进 tarball。所以改为把编译产物复制进包内 `vendor/` 并提交，`layers/*.js` 用相对路径指向它——这样从 Git 安装（没有安装步骤）同样成立。
 
-装好之后 profile 里只有 `@pseudo-agi/bundle` 一个包，patch 的五行各自解析到 `@pseudo-agi/bundle/layers/<layer>`，再由相对路径解析到包内 vendor 副本（理由见 [layers/README.md](../packages/pseudo-agi-bundle/layers/README.md)）。
+装好之后 profile 里只有 `@pseudo-agi/bundle` 一个包，patch 的五行各自解析到 `@pseudo-agi/bundle/layers/<layer>`，再由相对路径解析到包内 vendor 副本（理由见 [layers/README.md](../layers/README.md)）。
 
 验收：
 
@@ -78,7 +78,7 @@ pnpm bundle-test
 // profile/package.json
 {
   "dependencies": {
-    "@pseudo-agi/bundle": "link:<repo>/packages/pseudo-agi-bundle",
+    "@pseudo-agi/bundle": "link:<repo>",
     "@pseudo-agi/memory": "link:<repo>/packages/pseudo-agi-memory",
     "@pseudo-agi/tools": "link:<repo>/packages/pseudo-agi-tools",
     "@pseudo-agi/scaffold": "link:<repo>/packages/pseudo-agi-scaffold",
@@ -89,13 +89,13 @@ pnpm bundle-test
 }
 ```
 
-同一份 `cordis.patch.yml` 在两种形态下都成立：`@pseudo-agi/bundle/layers/memory` 从 profile 解析到 bundle，转发文件再从 `packages/pseudo-agi-bundle/node_modules` 解析到 workspace 里的 `@pseudo-agi/memory`。
+同一份 `cordis.patch.yml` 在两种形态下都成立：`@pseudo-agi/bundle/layers/memory` 从 profile 解析到 bundle，转发文件再从 `node_modules` 解析到 workspace 里的 `@pseudo-agi/memory`。
 
 ### 2.3 逐层分发（七包 + `overrides`）
 
 需要单独升级某一层、或不想用自包含产物时：
 
-`pnpm pack` 会把 `workspace:^0.2.0` 转成 `^0.2.0`，而 `@pseudo-agi/*` 不在公共 registry 上——所以直接把 bundle 装进 profile 会解析失败。实测可行的组合是「七个 tarball + `overrides` + 七个直接依赖」：
+`pnpm pack` 会把 `workspace:^0.3.0` 转成 `^0.3.0`，而 `@pseudo-agi/*` 不在公共 registry 上——所以直接把 bundle 装进 profile 会解析失败。实测可行的组合是「七个 tarball + `overrides` + 七个直接依赖」：
 
 ```jsonc
 // profile/package.json —— 不用 bundle、直接装六层时：每个插件包都必须是直接依赖，
@@ -103,12 +103,12 @@ pnpm bundle-test
 // （用 bundle 的话走 §2.1，一条 spec 就够，不需要 overrides。）
 {
   "dependencies": {
-    "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.2.0.tgz",
-    "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.2.0.tgz",
-    "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.2.0.tgz",
-    "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.2.0.tgz",
-    "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.2.0.tgz",
-    "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.2.0.tgz"
+    "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.3.0.tgz",
+    "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.3.0.tgz",
+    "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.3.0.tgz",
+    "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.3.0.tgz",
+    "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.3.0.tgz",
+    "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.3.0.tgz"
   }
 }
 ```
@@ -117,15 +117,15 @@ pnpm bundle-test
 # profile/pnpm-workspace.yaml —— overrides 在 pnpm 11 已迁到这里；
 # package.json 里的 "pnpm.overrides" 会被忽略（只有一条警告）。
 overrides:
-  "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.2.0.tgz"
-  "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.2.0.tgz"
-  "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.2.0.tgz"
-  "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.2.0.tgz"
-  "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.2.0.tgz"
-  "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.2.0.tgz"
+  "@pseudo-agi/memory": "file:./packs/pseudo-agi-memory-0.3.0.tgz"
+  "@pseudo-agi/tools": "file:./packs/pseudo-agi-tools-0.3.0.tgz"
+  "@pseudo-agi/scaffold": "file:./packs/pseudo-agi-scaffold-0.3.0.tgz"
+  "@pseudo-agi/governance": "file:./packs/pseudo-agi-governance-0.3.0.tgz"
+  "@pseudo-agi/panel": "file:./packs/pseudo-agi-panel-0.3.0.tgz"
+  "@pseudo-agi/store": "file:./packs/pseudo-agi-store-0.3.0.tgz"
 ```
 
-`@pseudo-agi/store` 必须同时出现在两处：它是三个插件包的**运行时**依赖（不是 peer），缺了它 `memory`/`tools` 一加载就 `ERR_MODULE_NOT_FOUND`；而它们的 `^0.2.0` 只有 override 才能落回本地 tarball。bundle 不需要这一套——它自带 `vendor/`，装它一条 spec 即可（§2.1）。
+`@pseudo-agi/store` 必须同时出现在两处：它是三个插件包的**运行时**依赖（不是 peer），缺了它 `memory`/`tools` 一加载就 `ERR_MODULE_NOT_FOUND`；而它们的 `^0.3.0` 只有 override 才能落回本地 tarball。bundle 不需要这一套——它自带 `vendor/`，装它一条 spec 即可（§2.1）。
 
 外加 `.npmrc`：
 

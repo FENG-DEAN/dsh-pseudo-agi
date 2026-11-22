@@ -32,7 +32,7 @@ import { pnpmCommand } from './lib/pnpm-command.mjs'
 const execFileAsync = promisify(execFile)
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const bundleDir = join(projectRoot, 'packages', 'pseudo-agi-bundle')
+const bundleDir = projectRoot
 
 let checks = 0
 const failures = []

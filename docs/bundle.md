@@ -1,41 +1,41 @@
-# @pseudo-agi/bundle
+# 分发单元：`@pseudo-agi/bundle`
 
-鲸鱼娘 AGI 的分发单元，也是**唯一需要安装的包**。它把五层实现 + 知识库位置库 + 面板客户端装在一起，装它一个就够。
+**仓库根就是 bundle 包。** 根目录的 `package.json` 声明了 `dsh.bundle` 与 `dsh.client`，所以：
 
-```json
-"dsh": {
-  "bundle": { "patch": "./cordis.patch.yml" },
-  "client": { "platform": "web", "immediately": true, "inject": ["..."] }
-}
+```bash
+pnpm add github:FENG-DEAN/dsh-pseudo-agi          # 粘仓库地址即可，不需要 &path:
 ```
 
-## 为什么随包携带实现（vendor）
+这正是 DSH 官方插件模板的形态（单包仓库），六个层实现从 `packages/*` 编译后随包携带在 `vendor/`。
 
-DSH 的 bundle 规范是**开箱即用**：从 Git 或 npm 安装时不会有构建步骤，`client.js` 也由宿主直接加载。所以：
+## 包内结构
 
 ```
-package/
+（仓库根也是包根）
 ├── package.json          # 没有 dependencies —— 安装时不需要解析任何包名
 ├── cordis.patch.yml      # 五行，name 全部指向包内子路径
 ├── layers/{memory,tools,scaffold,governance,panel}.js   # 相对路径指向 vendor
 ├── client.js             # 面板浏览器半侧（factory id = @pseudo-agi/bundle）
 ├── locale/
-└── vendor/node_modules/@pseudo-agi/{store,memory,tools,scaffold,governance,panel}/
+├── vendor/node_modules/@pseudo-agi/{store,memory,tools,scaffold,governance,panel}/
+└── packages/             # 六个层包的源码（不进 npm 包；files 白名单排除）
 ```
 
-这些生成文件**提交在仓库里**（见 [vendor/README.md](vendor/README.md)），由 `pnpm -r run build && pnpm vendor` 重建，`pnpm release-check` 会逐文件比对防止忘记重跑。
+`vendor/` 与 `client.js` 是**提交进仓库的生成文件**（见 [vendor/README.md](../vendor/README.md)），由 `pnpm build && pnpm vendor` 重建，`pnpm release-check` 逐文件比对防止忘记重跑。
+
+> Git 安装取的是整个仓库副本（pnpm 不为 git 依赖应用 `files`），所以 `packages/`、`scripts/`、`docs/` 也会落到 `node_modules` 里——功能无影响，只是体积比 npm tarball 大。
 
 ## 安装
 
 ```bash
+# GitHub（仓库根就是 bundle，不需要 path:）
+pnpm add github:FENG-DEAN/dsh-pseudo-agi
+
 # npm（发布之后）
 pnpm add @pseudo-agi/bundle
 
-# 直接从 GitHub 安装（不需要构建，仓库里已带产物）
-pnpm add "github:FENG-DEAN/dsh-pseudo-agi#v0.2.0&path:packages/pseudo-agi-bundle"
-
-# 发布产物 / GitHub Release 上的 tarball
-pnpm add https://github.com/<owner>/<repo>/releases/download/v0.2.0/pseudo-agi-bundle-0.2.0.tgz
+# Release / 静态 URL 上的 tarball
+pnpm add https://github.com/FENG-DEAN/dsh-pseudo-agi/releases/download/v0.3.0/pseudo-agi-bundle-0.3.0.tgz
 ```
 
 DSH 插件页的安装输入框接受同样的 spec（包名、绝对路径、tarball URL、Git 地址）。
@@ -72,7 +72,7 @@ DSH 插件页的安装输入框接受同样的 spec（包名、绝对路径、ta
 
 `workspaceRoot` 写相对值（如 `.`）会按宿主进程 cwd 解析——那是 DSH 的安装目录，通常不是你想要的；需要时请写绝对路径。
 
-完整五行与全部字段见包内的 [cordis.patch.yml](cordis.patch.yml)；逐字段说明见 [docs/install.md](../../docs/install.md) §4。
+完整五行与全部字段见仓库根的 [cordis.patch.yml](../cordis.patch.yml)；逐字段说明见 [install.md](install.md) §4。
 
 ## 使用
 
@@ -93,9 +93,9 @@ kb_store({ action: "rollback" })                            # 只改指针，不
 ## 构建与发布
 
 ```bash
-pnpm -r run build && pnpm vendor    # 重建 vendor/ 与 client.js（要提交）
-pnpm release-check                  # 校验自包含、行尾一致、无宿主包
-pnpm pack-bundle                    # 可分发 tgz + manifest（挂 Release 用）
+pnpm build && pnpm vendor    # 重建 vendor/ 与 client.js（要提交）
+pnpm release-check           # 校验自包含、vendor 同步、无宿主包
+pnpm pack-bundle             # 可分发 tgz + manifest（挂 Release 用）
 ```
 
-安装与验收详见仓库根目录的 [docs/install.md](../../docs/install.md)，发布流程见 [docs/publishing.md](../../docs/publishing.md)。
+安装与验收详见 [install.md](install.md)，发布流程见 [publishing.md](publishing.md)。

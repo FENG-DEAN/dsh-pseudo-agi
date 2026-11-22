@@ -22,7 +22,7 @@
 | "`agent/pre-step` 事件" | 存在，waterfall，payload = `{ agent, messages, turn, step, signal, modelSelection }`，返回 `PreStepDecision` | 脚手架先 `await next()` 再追加，绝不 veto 原生决策 |
 | "工具用 `ctx.tools.register(defineTool(...))`" | 正确，但定义必须含 `output: { schema, render }`，且 `render` 返回 `ContentBlock[]` | 全部工具都声明了 `output` |
 | "沙箱走 `ctx.sandbox`，默认 workspace-write，升权必须显式审批并携带新的 mode" | 沙箱是独立服务/策略插件（`dsh-sandbox`、`dsh-sandbox-policy`、`dsh-fs-sandbox` 等）的领域，工具侧没有"静默提权 + 带新 mode 的审批"这一公开契约 | **本工程不调用 `ctx.sandbox`**，改用"路径围栏 + guard + 审批"的显式降级，并在下面第 4 节写明它不是沙箱 |
-| "bundle = npm 包 + `cordis.patch.yml`，`package.json` 声明 `dsh.bundle.patch`" | 正确 | `packages/pseudo-agi-bundle/package.json` 的 `dsh.bundle.patch` 指向同目录 `cordis.patch.yml`，patch 行形态为 `- insert: [...]`，与 `dsh-cua-bundle` 一致 |
+| "bundle = npm 包 + `cordis.patch.yml`，`package.json` 声明 `dsh.bundle.patch`" | 正确 | 根 `package.json` 的 `dsh.bundle.patch` 指向同目录 `cordis.patch.yml`，patch 行形态为 `- insert: [...]`，与 `dsh-cua-bundle` 一致 |
 | "后层配置覆盖整份 config，不能假设深合并" | 正确 | patch 注释与 `docs/install.md` 都强调：重声明一行就要重述该行全部字段 |
 
 ## 3. 构建期修掉的真实缺陷
