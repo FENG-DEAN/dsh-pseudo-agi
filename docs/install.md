@@ -69,20 +69,20 @@ pnpm bundle-test
 
 它打包、单 spec 安装、逐条解析五行、加载面板客户端，并用本地 http 服务器真装一次 URL——共 12 项。
 
-### 2.2 开发形态（`link:`，本机 profile 用的那种）
+### 2.2 开发形态（`link:`）
 
-改源码即生效，代价是 profile 与工程绑在一起：
+改源码即生效，代价是 profile 与工程绑在一起。把 `<repo>` 换成你克隆下来的绝对路径：
 
 ```jsonc
 // profile/package.json
 {
   "dependencies": {
-    "@pseudo-agi/bundle": "link:D:/Doc/AIDoc/Dsh_dev/dsh_agi_dev/packages/pseudo-agi-bundle",
-    "@pseudo-agi/memory": "link:…/packages/pseudo-agi-memory",
-    "@pseudo-agi/tools": "link:…/packages/pseudo-agi-tools",
-    "@pseudo-agi/scaffold": "link:…/packages/pseudo-agi-scaffold",
-    "@pseudo-agi/governance": "link:…/packages/pseudo-agi-governance",
-    "@pseudo-agi/panel": "link:…/packages/pseudo-agi-panel"
+    "@pseudo-agi/bundle": "link:<repo>/packages/pseudo-agi-bundle",
+    "@pseudo-agi/memory": "link:<repo>/packages/pseudo-agi-memory",
+    "@pseudo-agi/tools": "link:<repo>/packages/pseudo-agi-tools",
+    "@pseudo-agi/scaffold": "link:<repo>/packages/pseudo-agi-scaffold",
+    "@pseudo-agi/governance": "link:<repo>/packages/pseudo-agi-governance",
+    "@pseudo-agi/panel": "link:<repo>/packages/pseudo-agi-panel"
   },
   "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "@pseudo-agi/bundle"] } }
 }
@@ -303,7 +303,7 @@ kb_store({ action: "rollback" })                                               #
 ## 7. 回滚与取证
 
 - 停用某层 = 删掉 patch 里对应行（或 `disabled: true`），不需要改代码。
-- 记忆是文件：`git diff .pseudo-agi/memory` 即可审阅新增/改动的记录，删文件即删除记忆。
+- 记忆是文件：`.pseudo-agi/memory/**` 就是 Markdown，删文件即删除记忆；想版本化就自己把这个目录纳入私有仓库或备份（开源仓库默认忽略它，见 [agi-state.md](agi-state.md)）。
 - 审计是 JSONL：`kind` 取值 `step`/`turn`/`tool`/`memory`/`route`/`error`，可 grep 回放。
 - `working.md` 与 `governance/*.jsonl` 都是投影/产物，可以安全删除。
 - 知识库位置：删掉 `store.json` 就回到配置默认位置；数据本身不受影响（搬家是复制，不是移动）。

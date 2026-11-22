@@ -1,10 +1,15 @@
-/**
+﻿/**
  * Panel route test: drive the Host half's real `/state` handler with a fake
- * web server, against the real workspace files.
+ * web server.
  *
  * The browser half cannot be tested without a browser, but everything the panel
  * renders comes through this one JSON route, so this is where the data contract
  * is pinned: shape, counts, and the two error branches.
+ *
+ * The workspace is built here, in a temporary directory, on purpose: the panel
+ * once read the repository's own `.pseudo-agi/` and `AGI_STATE.md`, which made
+ * this test depend on one machine's experiment notes. A clone of the repository
+ * has neither, so the fixture is the only way this stays runnable for anyone.
  *
  * Run with: node scripts/panel-test.mjs
  */
@@ -45,6 +50,32 @@ async function waitFor(label, predicate, timeoutMs = 3000) {
   throw new Error(`timeout waiting for ${label}`)
 }
 
+/**
+ * Build a minimal workspace the panel can read: one committed record, one
+ * journal file, a working digest, and the bench file.
+ * @returns {Promise<string>} the temporary workspace root.
+ */
+async function buildWorkspace() {
+  const root = await mkdtemp(join(tmpdir(), 'pseudo-agi-panel-fixture-'))
+  await mkdir(join(root, '.pseudo-agi', 'memory', 'semantic'), { recursive: true })
+  await mkdir(join(root, '.pseudo-agi', 'governance'), { recursive: true })
+  await writeFile(join(root, '.pseudo-agi', 'memory', 'semantic', 'mem-20260101-aaaaaaaa.md'),
+    '---\nid: "mem-20260101-aaaaaaaa"\nlayer: "semantic"\ntitle: "面板夹具记录"\nconfidence: 0.9\n'
+    + 'updatedAt: "2026-01-01T00:00:00.000Z"\n---\n\n# 面板夹具记录\n', 'utf8')
+  const events = [
+    { at: '2026-01-01T00:00:00.000Z', sessionId: 'fixture', kind: 'step', detail: { turn: 1, step: 1, messages: 1 } },
+    { at: '2026-01-01T00:00:01.000Z', sessionId: 'fixture', kind: 'scaffold', detail: { turn: 1, step: 1, injected: true } },
+    { at: '2026-01-01T00:00:02.000Z', sessionId: 'fixture', kind: 'tool', detail: { name: 'kb_read', callId: 'call-1', isError: false } },
+  ]
+  await writeFile(join(root, '.pseudo-agi', 'governance', 'session-fixture.jsonl'),
+    `${events.map(event => JSON.stringify(event)).join('\n')}\n`, 'utf8')
+  await writeFile(join(root, '.pseudo-agi', 'working.md'), '# 工作记忆摘要\n', 'utf8')
+  await writeFile(join(root, 'AGI_STATE.md'), '# AGI_STATE\n\n夹具工作台。\n', 'utf8')
+  return root
+}
+
+const fixture = await buildWorkspace()
+
 /** Fake web server capturing the registered prefix route. */
 let routePath = null
 let routeHandler = null
@@ -58,7 +89,7 @@ const fakeWebServer = {
 
 const app = new Context()
 app.plugin({ name: 'fake-web', apply(ctx) { ctx.provide('webServer', fakeWebServer) } })
-const fork = app.plugin(panel, { workspaceRoot: 'D:/Doc/AIDoc/Dsh_dev/dsh_agi_dev' })
+const fork = app.plugin(panel, { workspaceRoot: fixture })
 /** Later apps are declared up front so `finally` can dispose them. */
 let fork2 = null
 let fork3 = null
@@ -140,7 +171,7 @@ try {
 
   await check('工作台文本与工具数可见', () => {
     assert.match(payload.data.agiState ?? '', /AGI_STATE/)
-    assert.ok(payload.data.agiState.length > 200)
+    assert.match(payload.data.agiState ?? '', /夹具工作台/)
     assert.ok(typeof payload.data.toolCount === 'number' || payload.data.toolCount === null)
   })
 
@@ -163,7 +194,8 @@ try {
   const secretBytes = randomBytes(32)
   const b64url = value => value.toString('base64')
     .replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
-  const authority = '127.0.0.1:58891'
+  // A test authority, never a real port: the cookie is minted and verified against it.
+  const authority = '127.0.0.1:4444'
   const credentialRecord = { kind: 'grant', payload: { version: 1, secret: b64url(secretBytes) } }
   const fakeCredentials = {
     async readRecord(key) {
@@ -189,7 +221,7 @@ try {
   const app2 = new Context()
   app2.plugin({ name: 'fake-web-2', apply(ctx) { ctx.provide('webServer', authedWebServer) } })
   app2.plugin({ name: 'fake-credentials', apply(ctx) { ctx.provide('credentials', fakeCredentials) } })
-  fork2 = app2.plugin(panel, { workspaceRoot: 'D:/Doc/AIDoc/Dsh_dev/dsh_agi_dev' })
+  fork2 = app2.plugin(panel, { workspaceRoot: fixture })
   await waitFor('authenticated route', () => authedHandler !== null)
 
   await check('带有效 cookie → 200', async () => {
@@ -316,6 +348,7 @@ try {
   for (const item of [fork, fork2, fork3, fork4]) {
     try { await item?.dispose() } catch { /* already disposed */ }
   }
+  await rm(fixture, { recursive: true, force: true })
 }
 
 console.log(`\n${failures.length === 0 ? 'PASS' : 'FAIL'}: ${checks} passed, ${failures.length} failed`)

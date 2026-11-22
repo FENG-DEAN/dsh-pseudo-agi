@@ -34,6 +34,8 @@
 | [docs/architecture.md](docs/architecture.md) | 事件流、注册/释放清单、磁盘布局与知识库活动根、与 DSH 契约的对应关系 |
 | [docs/spec-compliance.md](docs/spec-compliance.md) | 三条硬约束逐条对照；方案里几处 API 名称的纠正 |
 | [docs/install.md](docs/install.md) | 构建、打包、装载、最小闭环配置、验收清单、换位置存储操作 |
+| [docs/agi-state.md](docs/agi-state.md) | 工作台 / 记忆 / 审计三份记录的分工，启动协议，为什么它们不入库 |
+| [templates/AGI_STATE.md](templates/AGI_STATE.md) | 工作台骨架，复制到工作区根后由模型维护 |
 | [docs/publishing.md](docs/publishing.md) | 发布：版本策略、六个层包与组合包产物的发布顺序、`release-check` 闸门、已知坑 |
 
 ## 三条硬约束怎么落实
@@ -76,6 +78,8 @@ pnpm release-check  # 发布前检查实际会发出去的内容
 - **开发形态**：六个包各自 `link:` 到 profile，改源码即生效；
 - 只想要最小闭环时，启用 `pseudo-agi-memory` + `pseudo-agi-tools` 两层即可（脚手架、治理层与面板均可选）。
 
+> **仓库里没有 `.pseudo-agi/` 与 `AGI_STATE.md`，这是有意的。** 工作台、记忆、审计日志都是运行时数据（会记录本机绝对路径、端口、会话 id 与未公开的实验结论），由 `.gitignore` 整体排除。首次运行插件自行创建；想预置一份工作台，从 [templates/AGI_STATE.md](templates/AGI_STATE.md) 复制到工作区根。三者分工见 [docs/agi-state.md](docs/agi-state.md)。
+
 ## 这个方案能做到 / 明确做不到
 
 **能做到**：跨会话的 Markdown 记忆与预算内注入；带来源的召回；路径边界由 guard 单调否决；每轮可审计的纪律注入与工具轨迹；指标与 JSONL 回放。
@@ -84,7 +88,7 @@ pnpm release-check  # 发布前检查实际会发出去的内容
 
 ## 状态
 
-已在本机验证（Node 24.14 / pnpm 10.32 / TypeScript 5.9，DSH `0.2.2-rc.5`）：
+已在本机验证（Node 24.21 / pnpm 11.28 / TypeScript 5.9，DSH `0.2.2-rc.5`，Windows）：
 
 | 检查 | 命令 | 结果 |
 | --- | --- | --- |

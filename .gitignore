@@ -1,19 +1,16 @@
+# 依赖与构建产物
 node_modules/
 lib/
+dist/
 *.tsbuildinfo
 .DS_Store
-
-# 构建产物与投影：可重建，不入库
-.pseudo-agi/working.md
-
-# 未决候选：还没被意识定稿，不入库
-.pseudo-agi/memory/candidates/
-
-# 审计日志是运行时产物
-.pseudo-agi/governance/
 
 # 本地测试脚本的临时目录
 tmp/
 
-# 分发产物：由 `pnpm pack-bundle` 重新生成
-dist/
+# ── 运行时数据：每台机器自己的实验记录，不进仓库 ──────────────────────────────
+# 工作台（意识正在做什么）与记忆（事实真源）都是运行时状态，不是源码：
+# 它们会记录本机绝对路径、端口、会话 id 和未公开的实验结论。
+# 首次运行由插件自行创建；想预置一份，从 templates/AGI_STATE.md 复制。
+AGI_STATE.md
+.pseudo-agi/
