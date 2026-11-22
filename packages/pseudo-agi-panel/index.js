@@ -331,10 +331,25 @@ function authorize(req, secret) {
 export function apply(ctx, config) {
   validateConfig(config)
   const root = resolve(config.workspaceRoot)
-  // Resolved once per activation: the cookie secret is durable for this Harness home.
-  const secretReady = browserSessionSecret(ctx).catch((error) => {
-    ctx.logger.warn(`pseudo-agi-panel: browser-session secret unavailable: ${error instanceof Error ? error.message : String(error)}`)
-    return undefined
+  /**
+   * Auth state, resolved through a dependency-scoped context. Reading the cookie
+   * secret straight from this plugin's own context can miss a service that a
+   * sibling plugin provides, so the read runs on the context that injected it.
+   * Until then the panel stays readable, which keeps a minimal host working.
+   */
+  let secretReady = Promise.resolve(undefined)
+  let authState = 'credentials-service-absent'
+  ctx.inject(['credentials'], (credentialCtx) => {
+    secretReady = browserSessionSecret(credentialCtx)
+      .then((secret) => {
+        authState = secret === undefined ? 'secret-unavailable' : 'ready'
+        return secret
+      })
+      .catch((error) => {
+        authState = 'secret-read-failed'
+        ctx.logger.warn(`pseudo-agi-panel: browser-session secret unavailable: ${error instanceof Error ? error.message : String(error)}`)
+        return undefined
+      })
   })
   let warnedUnverifiable = false
 
@@ -374,7 +389,10 @@ export function apply(ctx, config) {
         send(404, { ok: false, error: `unknown action "${action}"` })
         return
       }
-      send(200, { ok: true, data: await collect(ctx, root) })
+      const data = await collect(ctx, root)
+      // Read-only diagnostic: says whether this response was cookie-checked and why not.
+      data.auth = { enforced: verdict !== 'unverifiable', reason: authState }
+      send(200, { ok: true, data })
     } catch (error) {
       ctx.logger.warn(`pseudo-agi-panel: ${error instanceof Error ? error.message : String(error)}`)
       send(500, { ok: false, error: 'internal error' })

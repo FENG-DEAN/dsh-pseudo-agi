@@ -125,3 +125,12 @@
 **验证**：`node scripts/panel-test.mjs` → **14/14**（新增 5 例：有效 cookie→200、无 cookie→401、伪造签名→401、过期→401、authority 不符→401）；`smoke.mjs` 25/25；`profile-check.mjs` 12/12。
 
 **未验证**：真机行为要重启后才知道——改的是 `link:` 包源码，宿主进程此刻仍持有旧模块，`/state` 现在应仍返回 200。
+
+### 2026-11-22 · 鉴权修复真机第一次未生效（已定位，待二次重启）
+
+- **现象**：重启后（GUI 端口 `58891` → `51628`，新进程），`GET /` 仍 401，但 `GET /pseudo-agi/api/state` 仍 **200**，带伪造 cookie 也 200 → 鉴权分支根本没进入，不是验签失败。
+- **已排除**：① 代码没落盘——磁盘 `index.js` mtime 16:19:03，含 `authorize`/`secretReady`；② 进程是旧的——7 个进程 StartTime 16:20:45，晚于文件；③ 链接断了——profile 的 `@pseudo-agi/panel` 是 Junction 指向工程；④ 副本缓存——`.pnpm` 与深层扫描均无第二份 `index.js`；⑤ 记录缺失——`.credentials.yaml` 里有 `client-connection/browser-session`，`kind: grant`、`payload.version: 1`、secret 43 字符 base64url（≈32 字节）；⑥ 时序——本地复现「credentials 先于 / 后于 panel」两种顺序**都返回 401**。
+- **结论（推断，待证）**：真机上 `browserSessionSecret()` 返回 `undefined`，走 `unverifiable` 放行。最可能是 `ctx.get('credentials', false)` 在插件自身 ctx 上看不到由兄弟插件提供的服务。
+- **二次修法**：改用 `ctx.inject(['credentials'], cb)` 在依赖作用域内读 secret；并把 `data.auth = { enforced, reason }` 放进响应，`reason` ∈ `credentials-service-absent` / `secret-unavailable` / `secret-read-failed` / `ready`，重启后可直接判定。
+- **单测**：panel-test 14/14、smoke 25/25 仍通过（无 credentials 的最小宿主仍放行，符合设计）。
+- **教训**：单测全绿不等于真机生效——测试里 credentials 是同 app 直供，真机是跨插件服务，可见性条件不同。
